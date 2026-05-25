@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingStart="20dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="22dp">
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/camera_preview"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:scaleType="fillCenter"
+        app:layout_constraintBottom_toBottomOf="@id/view2"
+        app:layout_constraintEnd_toEndOf="@id/view2"
+        app:layout_constraintStart_toStartOf="@id/view2"
+        app:layout_constraintTop_toTopOf="@id/view2" />
+
+    <View
+        android:id="@+id/view2"
+        android:layout_width="312dp"
+        android:layout_height="0dp"
+        android:background="@drawable/border_light_green"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintDimensionRatio="3:4"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.491"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.0" />
+
+    <TextView
+        android:id="@+id/camera_description"
+        android:layout_width="207dp"
+        android:layout_height="39dp"
+        android:layout_marginTop="20dp"
+        android:gravity="center"
+        android:text="테두리 안에 세탁물이 들어오도록 카메라를 맞춰주세요"
+        android:textColor="@color/laundry_text_muted"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/view2" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/button_capture"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="18dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="18dp"
+        android:text="@string/capture"
+        android:textAllCaps="false"
+        app:backgroundTint="@color/laundry_primary"
+        app:cornerRadius="16dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/camera_description" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

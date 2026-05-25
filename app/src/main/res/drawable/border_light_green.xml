@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <!-- 안쪽은 투명 -->
+    <solid android:color="@android:color/transparent" />
+
+    <!-- 테두리만 연한 녹색 -->
+    <stroke
+        android:width="2dp"
+        android:color="#A5D6A7" />
+
+</shape>
