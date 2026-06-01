@@ -47,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
     private BottomNavigationView bottomNavigation;
     private PreviewView cameraPreview;
     private ImageView frozenFrame;
+    private DetectionOverlayView detectionOverlay;
     private View cameraFlash;
     private LifecycleCameraController cameraController;
     private ActivityResultLauncher<String> cameraPermissionLauncher;
@@ -81,6 +82,7 @@ public class MainActivity extends AppCompatActivity {
         bottomNavigation = findViewById(R.id.bottom_navigation);
         cameraPreview = findViewById(R.id.camera_preview);
         frozenFrame = findViewById(R.id.frozen_frame);
+        detectionOverlay = findViewById(R.id.detection_overlay);
         cameraFlash = findViewById(R.id.camera_flash);
 
         inferenceExecutor = Executors.newSingleThreadExecutor();
@@ -218,10 +220,18 @@ public class MainActivity extends AppCompatActivity {
 
         String laundryCategory = mapLabelToLaundryCategory(result.label);
         if (result.label == null || laundryCategory == null) {
+            detectionOverlay.clearDetection();
             resetLabelStreak();
             recycleFrame(result.frameBitmap);
             return;
         }
+
+        detectionOverlay.showDetection(
+                result.label,
+                result.confidence,
+                result.normalizedBox,
+                result.frameWidth,
+                result.frameHeight);
 
         if (result.label.equals(lastDetectedLabel)) {
             stableLabelCount++;
@@ -292,6 +302,7 @@ public class MainActivity extends AppCompatActivity {
         cameraFlash.animate().cancel();
         cameraFlash.setAlpha(0f);
         cameraFlash.setVisibility(View.GONE);
+        detectionOverlay.clearDetection();
         clearFrozenFrame();
     }
 

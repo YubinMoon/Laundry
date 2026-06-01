@@ -32,6 +32,16 @@
         app:layout_constraintTop_toTopOf="@id/view2"
         tools:ignore="ContentDescription" />
 
+    <app.dku.embededapp.DetectionOverlayView
+        android:id="@+id/detection_overlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/view2"
+        app:layout_constraintEnd_toEndOf="@id/view2"
+        app:layout_constraintStart_toStartOf="@id/view2"
+        app:layout_constraintTop_toTopOf="@id/view2" />
+
     <View
         android:id="@+id/camera_flash"
         android:layout_width="0dp"

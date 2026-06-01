@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.YuvImage;
 
 import androidx.camera.core.ImageProxy;
@@ -80,20 +81,28 @@ final class LaundryDetector implements AutoCloseable {
 
         int bestClassIndex = -1;
         float bestConfidence = 0f;
+        RectF bestBox = null;
         for (int index = 0; index < detectionCount; index++) {
             float confidence = outputBuffer[0][index][4];
             int classIndex = Math.round(outputBuffer[0][index][5]);
             if (confidence > bestConfidence && classIndex >= 0 && classIndex < labels.size()) {
                 bestConfidence = confidence;
                 bestClassIndex = classIndex;
+                bestBox = readNormalizedBox(outputBuffer[0][index]);
             }
         }
 
-        if (bestClassIndex < 0 || bestConfidence < confidenceThreshold) {
+        if (bestClassIndex < 0 || bestConfidence < confidenceThreshold || bestBox == null) {
             frameBitmap.recycle();
-            return new DetectionResult(null, bestConfidence, null);
+            return new DetectionResult(null, bestConfidence, null, null, 0, 0);
         }
-        return new DetectionResult(labels.get(bestClassIndex), bestConfidence, frameBitmap);
+        return new DetectionResult(
+                labels.get(bestClassIndex),
+                bestConfidence,
+                bestBox,
+                frameBitmap,
+                frameBitmap.getWidth(),
+                frameBitmap.getHeight());
     }
 
     @Override
@@ -109,6 +118,30 @@ final class LaundryDetector implements AutoCloseable {
             inputBuffer.putFloat(((pixel >> 8) & 0xff) / 255f);
             inputBuffer.putFloat((pixel & 0xff) / 255f);
         }
+    }
+
+    private RectF readNormalizedBox(float[] detection) {
+        float left = detection[0];
+        float top = detection[1];
+        float right = detection[2];
+        float bottom = detection[3];
+
+        if (Math.max(Math.max(left, right), Math.max(top, bottom)) > 1.5f) {
+            left /= inputWidth;
+            right /= inputWidth;
+            top /= inputHeight;
+            bottom /= inputHeight;
+        }
+
+        return new RectF(
+                clamp01(Math.min(left, right)),
+                clamp01(Math.min(top, bottom)),
+                clamp01(Math.max(left, right)),
+                clamp01(Math.max(top, bottom)));
+    }
+
+    private static float clamp01(float value) {
+        return Math.max(0f, Math.min(1f, value));
     }
 
     private static Bitmap imageProxyToBitmap(ImageProxy imageProxy) {
@@ -160,8 +193,8 @@ final class LaundryDetector implements AutoCloseable {
     private static void copyYPlane(
             ImageProxy.PlaneProxy plane,
             int width,
-                int height,
-                byte[] output) {
+            int height,
+            byte[] output) {
         ByteBuffer buffer = plane.getBuffer().duplicate();
         buffer.rewind();
         int rowStride = plane.getRowStride();
@@ -258,12 +291,24 @@ final class LaundryDetector implements AutoCloseable {
     static final class DetectionResult {
         final String label;
         final float confidence;
+        final RectF normalizedBox;
         final Bitmap frameBitmap;
+        final int frameWidth;
+        final int frameHeight;
 
-        DetectionResult(String label, float confidence, Bitmap frameBitmap) {
+        DetectionResult(
+                String label,
+                float confidence,
+                RectF normalizedBox,
+                Bitmap frameBitmap,
+                int frameWidth,
+                int frameHeight) {
             this.label = label;
             this.confidence = confidence;
+            this.normalizedBox = normalizedBox;
             this.frameBitmap = frameBitmap;
+            this.frameWidth = frameWidth;
+            this.frameHeight = frameHeight;
         }
     }
 }
