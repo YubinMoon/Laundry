@@ -56,16 +56,17 @@
 
     <View
         android:id="@+id/view2"
-        android:layout_width="312dp"
+        android:layout_width="0dp"
         android:layout_height="0dp"
         android:background="@drawable/border_light_green"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintDimensionRatio="3:4"
+        app:layout_constraintBottom_toTopOf="@id/camera_description"
+        app:layout_constraintDimensionRatio="W,3:4"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.491"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.0" />
+        app:layout_constraintVertical_bias="0.0"
+        app:layout_constraintWidth_max="312dp" />
 
     <TextView
         android:id="@+id/camera_description"
@@ -76,6 +77,7 @@
         android:text="테두리 안에 세탁물이 들어오도록 카메라를 맞춰주세요"
         android:textColor="@color/laundry_text_muted"
         android:textSize="14sp"
+        app:layout_constraintBottom_toTopOf="@id/button_capture"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/view2" />
@@ -91,6 +93,7 @@
         android:textAllCaps="false"
         app:backgroundTint="@color/laundry_primary"
         app:cornerRadius="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
