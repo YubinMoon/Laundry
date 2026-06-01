@@ -1,10 +1,16 @@
 package app.dku.embededapp;
 
 import android.Manifest;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.RectF;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -24,7 +30,6 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
@@ -40,8 +45,10 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUIRED_STABLE_LABEL_COUNT = 3;
     private static final long FLASH_HALF_DURATION_MS = 150L;
     private static final long MODAL_DELAY_AFTER_FLASH_MS = 200L;
+    private static final long CROP_MODAL_ANIMATION_MS = 360L;
 
     private View[] pages;
+    private View registerPage;
     private TextView screenTitle;
     private TextView screenSubtitle;
     private BottomNavigationView bottomNavigation;
@@ -49,6 +56,11 @@ public class MainActivity extends AppCompatActivity {
     private ImageView frozenFrame;
     private DetectionOverlayView detectionOverlay;
     private View cameraFlash;
+    private View detectionModalScrim;
+    private View detectionResultModal;
+    private ImageView detectionResultImage;
+    private ImageView detectionTransitionImage;
+    private TextView detectionResultMessage;
     private LifecycleCameraController cameraController;
     private ActivityResultLauncher<String> cameraPermissionLauncher;
     private ExecutorService inferenceExecutor;
@@ -58,6 +70,9 @@ public class MainActivity extends AppCompatActivity {
     private String lastDetectedLabel;
     private int stableLabelCount;
     private Bitmap frozenFrameBitmap;
+    private Bitmap detectionCropBitmap;
+    private RectF detectionCropBox;
+    private ValueAnimator cropModalAnimator;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,6 +92,7 @@ public class MainActivity extends AppCompatActivity {
                 findViewById(R.id.page_groups),
                 findViewById(R.id.page_tips)
         };
+        registerPage = pages[PAGE_REGISTER];
         screenTitle = findViewById(R.id.screen_title);
         screenSubtitle = findViewById(R.id.screen_subtitle);
         bottomNavigation = findViewById(R.id.bottom_navigation);
@@ -84,6 +100,11 @@ public class MainActivity extends AppCompatActivity {
         frozenFrame = findViewById(R.id.frozen_frame);
         detectionOverlay = findViewById(R.id.detection_overlay);
         cameraFlash = findViewById(R.id.camera_flash);
+        detectionModalScrim = findViewById(R.id.detection_modal_scrim);
+        detectionResultModal = findViewById(R.id.detection_result_modal);
+        detectionResultImage = findViewById(R.id.detection_result_image);
+        detectionTransitionImage = findViewById(R.id.detection_transition_image);
+        detectionResultMessage = findViewById(R.id.detection_result_message);
 
         inferenceExecutor = Executors.newSingleThreadExecutor();
         try {
@@ -133,6 +154,12 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.button_view_groups).setOnClickListener(
                 view -> bottomNavigation.setSelectedItemId(R.id.navigation_groups));
         findViewById(R.id.button_capture).setOnClickListener(view -> ensureCameraPreview());
+        findViewById(R.id.detection_result_confirm).setOnClickListener(view -> {
+            resetDetectionState();
+            if (pages[PAGE_REGISTER].getVisibility() == View.VISIBLE) {
+                startCameraPreview();
+            }
+        });
 
         bottomNavigation.setSelectedItemId(R.id.navigation_home);
     }
@@ -149,6 +176,7 @@ public class MainActivity extends AppCompatActivity {
         if (inferenceExecutor != null) {
             inferenceExecutor.shutdown();
         }
+        clearDetectionResultModal();
         clearFrozenFrame();
         super.onDestroy();
     }
@@ -243,14 +271,15 @@ public class MainActivity extends AppCompatActivity {
         if (stableLabelCount >= REQUIRED_STABLE_LABEL_COUNT) {
             detectionLocked = true;
             analysisEnabled = false;
+            setDetectionCrop(createDetectionCrop(result.frameBitmap, result.normalizedBox));
             freezeFrame(result.frameBitmap);
-            flashAndShowDetectedDialog(laundryCategory);
+            flashAndShowDetectedResult(laundryCategory);
         } else {
             recycleFrame(result.frameBitmap);
         }
     }
 
-    private void flashAndShowDetectedDialog(String laundryCategory) {
+    private void flashAndShowDetectedResult(String laundryCategory) {
         cameraFlash.animate().cancel();
         cameraFlash.setAlpha(0f);
         cameraFlash.setVisibility(View.VISIBLE);
@@ -265,7 +294,7 @@ public class MainActivity extends AppCompatActivity {
                             cameraFlash.postDelayed(() -> {
                                 if (detectionLocked
                                         && pages[PAGE_REGISTER].getVisibility() == View.VISIBLE) {
-                                    showDetectedDialog(laundryCategory);
+                                    showDetectedResultModal(laundryCategory);
                                 }
                             }, MODAL_DELAY_AFTER_FLASH_MS);
                         })
@@ -273,18 +302,163 @@ public class MainActivity extends AppCompatActivity {
                 .start();
     }
 
-    private void showDetectedDialog(String laundryCategory) {
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.detected_laundry_title)
-                .setMessage(getString(R.string.detected_laundry_message, laundryCategory))
-                .setPositiveButton(R.string.detected_laundry_confirm, (dialog, which) -> {
-                    resetDetectionState();
-                    if (pages[PAGE_REGISTER].getVisibility() == View.VISIBLE) {
-                        startCameraPreview();
-                    }
-                })
-                .setCancelable(false)
-                .show();
+    private void showDetectedResultModal(String laundryCategory) {
+        if (detectionCropBitmap == null || detectionCropBox == null || frozenFrameBitmap == null) {
+            return;
+        }
+
+        detectionResultMessage.setText(getString(R.string.detected_laundry_message, laundryCategory));
+        detectionResultImage.setImageBitmap(detectionCropBitmap);
+        detectionResultImage.setVisibility(View.INVISIBLE);
+        detectionModalScrim.setAlpha(0f);
+        detectionResultModal.setAlpha(0f);
+        detectionModalScrim.setVisibility(View.VISIBLE);
+        detectionResultModal.setVisibility(View.VISIBLE);
+
+        detectionResultModal.post(() -> {
+            if (!detectionLocked
+                    || detectionCropBitmap == null
+                    || pages[PAGE_REGISTER].getVisibility() != View.VISIBLE) {
+                return;
+            }
+            RectF startRect = getCropRectInRegisterPage();
+            RectF endRect = getViewRectInRegisterPage(detectionResultImage);
+            if (startRect == null || endRect.width() <= 0f || endRect.height() <= 0f) {
+                detectionResultImage.setVisibility(View.VISIBLE);
+                detectionModalScrim.setAlpha(1f);
+                detectionResultModal.setAlpha(1f);
+                return;
+            }
+            animateCropIntoModal(startRect, endRect);
+        });
+    }
+
+    private void animateCropIntoModal(RectF startRect, RectF endRect) {
+        if (cropModalAnimator != null) {
+            cropModalAnimator.cancel();
+        }
+        detectionTransitionImage.setImageBitmap(detectionCropBitmap);
+        detectionTransitionImage.setVisibility(View.VISIBLE);
+        updateTransitionImageBounds(startRect);
+
+        detectionModalScrim.animate()
+                .alpha(1f)
+                .setDuration(180L)
+                .start();
+        detectionResultModal.animate()
+                .alpha(1f)
+                .setDuration(CROP_MODAL_ANIMATION_MS)
+                .start();
+
+        cropModalAnimator = ValueAnimator.ofFloat(0f, 1f);
+        cropModalAnimator.setDuration(CROP_MODAL_ANIMATION_MS);
+        cropModalAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
+        cropModalAnimator.addUpdateListener(animator -> {
+            float progress = (float) animator.getAnimatedValue();
+            RectF currentRect = new RectF(
+                    lerp(startRect.left, endRect.left, progress),
+                    lerp(startRect.top, endRect.top, progress),
+                    lerp(startRect.right, endRect.right, progress),
+                    lerp(startRect.bottom, endRect.bottom, progress));
+            updateTransitionImageBounds(currentRect);
+        });
+        cropModalAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                detectionTransitionImage.setVisibility(View.GONE);
+                detectionTransitionImage.setImageDrawable(null);
+                detectionResultImage.setVisibility(View.VISIBLE);
+                cropModalAnimator = null;
+            }
+        });
+        cropModalAnimator.start();
+    }
+
+    private void updateTransitionImageBounds(RectF rect) {
+        ViewGroup.LayoutParams layoutParams = detectionTransitionImage.getLayoutParams();
+        layoutParams.width = Math.max(1, Math.round(rect.width()));
+        layoutParams.height = Math.max(1, Math.round(rect.height()));
+        detectionTransitionImage.setLayoutParams(layoutParams);
+        detectionTransitionImage.setX(rect.left);
+        detectionTransitionImage.setY(rect.top);
+    }
+
+    private RectF getCropRectInRegisterPage() {
+        if (detectionCropBox == null || frozenFrameBitmap == null) {
+            return null;
+        }
+
+        RectF frozenFrameRect = getViewRectInRegisterPage(frozenFrame);
+        float frameWidth = frozenFrameBitmap.getWidth();
+        float frameHeight = frozenFrameBitmap.getHeight();
+        float scale = Math.max(frozenFrame.getWidth() / frameWidth, frozenFrame.getHeight() / frameHeight);
+        float scaledFrameWidth = frameWidth * scale;
+        float scaledFrameHeight = frameHeight * scale;
+        float offsetX = (frozenFrame.getWidth() - scaledFrameWidth) / 2f;
+        float offsetY = (frozenFrame.getHeight() - scaledFrameHeight) / 2f;
+
+        return new RectF(
+                frozenFrameRect.left + offsetX + detectionCropBox.left * scaledFrameWidth,
+                frozenFrameRect.top + offsetY + detectionCropBox.top * scaledFrameHeight,
+                frozenFrameRect.left + offsetX + detectionCropBox.right * scaledFrameWidth,
+                frozenFrameRect.top + offsetY + detectionCropBox.bottom * scaledFrameHeight);
+    }
+
+    private RectF getViewRectInRegisterPage(View view) {
+        int[] rootLocation = new int[2];
+        int[] viewLocation = new int[2];
+        registerPage.getLocationOnScreen(rootLocation);
+        view.getLocationOnScreen(viewLocation);
+        float left = viewLocation[0] - rootLocation[0];
+        float top = viewLocation[1] - rootLocation[1];
+        return new RectF(left, top, left + view.getWidth(), top + view.getHeight());
+    }
+
+    private DetectionCrop createDetectionCrop(Bitmap frameBitmap, RectF normalizedBox) {
+        if (frameBitmap == null || normalizedBox == null) {
+            return null;
+        }
+
+        int imageWidth = frameBitmap.getWidth();
+        int imageHeight = frameBitmap.getHeight();
+        float boxLeft = normalizedBox.left * imageWidth;
+        float boxTop = normalizedBox.top * imageHeight;
+        float boxRight = normalizedBox.right * imageWidth;
+        float boxBottom = normalizedBox.bottom * imageHeight;
+        float boxWidth = Math.max(1f, boxRight - boxLeft);
+        float boxHeight = Math.max(1f, boxBottom - boxTop);
+        int side = Math.round(Math.min(Math.max(boxWidth, boxHeight), Math.min(imageWidth, imageHeight)));
+        side = Math.max(1, side);
+
+        float centerX = (boxLeft + boxRight) / 2f;
+        float centerY = (boxTop + boxBottom) / 2f;
+        int left = Math.round(clamp(centerX - side / 2f, 0f, imageWidth - side));
+        int top = Math.round(clamp(centerY - side / 2f, 0f, imageHeight - side));
+        if (left + side > imageWidth) {
+            left = imageWidth - side;
+        }
+        if (top + side > imageHeight) {
+            top = imageHeight - side;
+        }
+
+        Bitmap cropBitmap = Bitmap.createBitmap(frameBitmap, left, top, side, side);
+        RectF cropBox = new RectF(
+                left / (float) imageWidth,
+                top / (float) imageHeight,
+                (left + side) / (float) imageWidth,
+                (top + side) / (float) imageHeight);
+        return new DetectionCrop(cropBitmap, cropBox);
+    }
+
+    private void setDetectionCrop(DetectionCrop detectionCrop) {
+        recycleFrame(detectionCropBitmap);
+        if (detectionCrop == null) {
+            detectionCropBitmap = null;
+            detectionCropBox = null;
+            return;
+        }
+        detectionCropBitmap = detectionCrop.bitmap;
+        detectionCropBox = detectionCrop.normalizedBox;
     }
 
     private void freezeFrame(Bitmap bitmap) {
@@ -303,7 +477,28 @@ public class MainActivity extends AppCompatActivity {
         cameraFlash.setAlpha(0f);
         cameraFlash.setVisibility(View.GONE);
         detectionOverlay.clearDetection();
+        clearDetectionResultModal();
         clearFrozenFrame();
+    }
+
+    private void clearDetectionResultModal() {
+        if (cropModalAnimator != null) {
+            cropModalAnimator.cancel();
+            cropModalAnimator = null;
+        }
+        detectionModalScrim.animate().cancel();
+        detectionResultModal.animate().cancel();
+        detectionModalScrim.setAlpha(0f);
+        detectionResultModal.setAlpha(0f);
+        detectionModalScrim.setVisibility(View.GONE);
+        detectionResultModal.setVisibility(View.GONE);
+        detectionTransitionImage.setVisibility(View.GONE);
+        detectionTransitionImage.setImageDrawable(null);
+        detectionResultImage.setImageDrawable(null);
+        detectionResultImage.setVisibility(View.VISIBLE);
+        recycleFrame(detectionCropBitmap);
+        detectionCropBitmap = null;
+        detectionCropBox = null;
     }
 
     private void resetLabelStreak() {
@@ -322,6 +517,14 @@ public class MainActivity extends AppCompatActivity {
         if (bitmap != null && !bitmap.isRecycled()) {
             bitmap.recycle();
         }
+    }
+
+    private float lerp(float start, float end, float progress) {
+        return start + (end - start) * progress;
+    }
+
+    private float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(value, max));
     }
 
     private String mapLabelToLaundryCategory(String label) {
@@ -345,6 +548,16 @@ public class MainActivity extends AppCompatActivity {
                 return "양말";
             default:
                 return null;
+        }
+    }
+
+    private static final class DetectionCrop {
+        final Bitmap bitmap;
+        final RectF normalizedBox;
+
+        DetectionCrop(Bitmap bitmap, RectF normalizedBox) {
+            this.bitmap = bitmap;
+            this.normalizedBox = normalizedBox;
         }
     }
 }
