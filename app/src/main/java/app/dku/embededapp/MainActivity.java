@@ -65,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<String> cameraPermissionLauncher;
     private ExecutorService inferenceExecutor;
     private LaundryDetector laundryDetector;
+    private TopClassifier topClassifier;
     private volatile boolean analysisEnabled;
     private volatile boolean detectionLocked;
     private String lastDetectedLabel;
@@ -107,9 +108,20 @@ public class MainActivity extends AppCompatActivity {
         detectionResultMessage = findViewById(R.id.detection_result_message);
 
         inferenceExecutor = Executors.newSingleThreadExecutor();
+        LaundryDetector loadedLaundryDetector = null;
+        TopClassifier loadedTopClassifier = null;
         try {
-            laundryDetector = new LaundryDetector(this);
+            loadedLaundryDetector = new LaundryDetector(this);
+            loadedTopClassifier = new TopClassifier(this);
+            laundryDetector = loadedLaundryDetector;
+            topClassifier = loadedTopClassifier;
         } catch (IOException | RuntimeException exception) {
+            if (loadedTopClassifier != null) {
+                loadedTopClassifier.close();
+            }
+            if (loadedLaundryDetector != null) {
+                loadedLaundryDetector.close();
+            }
             Toast.makeText(this, R.string.model_load_failed, Toast.LENGTH_SHORT).show();
         }
 
@@ -173,6 +185,9 @@ public class MainActivity extends AppCompatActivity {
         if (laundryDetector != null) {
             laundryDetector.close();
         }
+        if (topClassifier != null) {
+            topClassifier.close();
+        }
         if (inferenceExecutor != null) {
             inferenceExecutor.shutdown();
         }
@@ -218,27 +233,57 @@ public class MainActivity extends AppCompatActivity {
 
     private void analyzeFrame(ImageProxy imageProxy) {
         LaundryDetector detector = laundryDetector;
+        TopClassifier classifier = topClassifier;
         if (!analysisEnabled || detectionLocked || detector == null) {
             imageProxy.close();
             return;
         }
 
         LaundryDetector.DetectionResult result = null;
+        AnalyzedDetection analyzedDetection = null;
         try {
             result = detector.detect(imageProxy, DETECTION_CONFIDENCE_THRESHOLD);
+            if (result != null) {
+                analyzedDetection = createAnalyzedDetection(result, classifier);
+                result = null;
+            }
         } catch (RuntimeException exception) {
+            if (result != null) {
+                recycleFrame(result.frameBitmap);
+            }
             // Drop malformed camera frames without interrupting the preview.
         } finally {
             imageProxy.close();
         }
 
-        if (result != null) {
-            LaundryDetector.DetectionResult finalResult = result;
+        if (analyzedDetection != null) {
+            AnalyzedDetection finalResult = analyzedDetection;
             runOnUiThread(() -> handleDetectionResult(finalResult));
         }
     }
 
-    private void handleDetectionResult(LaundryDetector.DetectionResult result) {
+    private AnalyzedDetection createAnalyzedDetection(
+            LaundryDetector.DetectionResult result,
+            TopClassifier classifier) {
+        TopClassifier.Result topResult = null;
+        if (classifier != null && isTopLabel(result.label) && result.normalizedBox != null) {
+            DetectionCrop topCrop = null;
+            try {
+                topCrop = createDetectionCrop(result.frameBitmap, result.normalizedBox);
+                if (topCrop != null) {
+                    topResult = classifier.classify(topCrop.bitmap);
+                }
+            } finally {
+                if (topCrop != null) {
+                    recycleFrame(topCrop.bitmap);
+                }
+            }
+        }
+        return new AnalyzedDetection(result, formatDisplayLabel(result.label, topResult), topResult);
+    }
+
+    private void handleDetectionResult(AnalyzedDetection analyzedDetection) {
+        LaundryDetector.DetectionResult result = analyzedDetection.detectionResult;
         if (!analysisEnabled
                 || detectionLocked
                 || pages[PAGE_REGISTER].getVisibility() != View.VISIBLE) {
@@ -255,16 +300,16 @@ public class MainActivity extends AppCompatActivity {
         }
 
         detectionOverlay.showDetection(
-                result.label,
-                result.confidence,
+                analyzedDetection.displayLabel,
+                analyzedDetection.displayConfidence,
                 result.normalizedBox,
                 result.frameWidth,
                 result.frameHeight);
 
-        if (result.label.equals(lastDetectedLabel)) {
+        if (analyzedDetection.displayLabel.equals(lastDetectedLabel)) {
             stableLabelCount++;
         } else {
-            lastDetectedLabel = result.label;
+            lastDetectedLabel = analyzedDetection.displayLabel;
             stableLabelCount = 1;
         }
 
@@ -274,13 +319,16 @@ public class MainActivity extends AppCompatActivity {
             String colorType = LaundryColorAnalyzer.detectColorType(result.frameBitmap, result.normalizedBox);
             setDetectionCrop(createDetectionCrop(result.frameBitmap, result.normalizedBox));
             freezeFrame(result.frameBitmap);
-            flashAndShowDetectedResult(laundryCategory, colorType);
+            flashAndShowDetectedResult(laundryCategory, colorType, analyzedDetection.topResult);
         } else {
             recycleFrame(result.frameBitmap);
         }
     }
 
-    private void flashAndShowDetectedResult(String laundryCategory, String colorType) {
+    private void flashAndShowDetectedResult(
+            String laundryCategory,
+            String colorType,
+            TopClassifier.Result topResult) {
         cameraFlash.animate().cancel();
         cameraFlash.setAlpha(0f);
         cameraFlash.setVisibility(View.VISIBLE);
@@ -295,7 +343,7 @@ public class MainActivity extends AppCompatActivity {
                             cameraFlash.postDelayed(() -> {
                                 if (detectionLocked
                                         && pages[PAGE_REGISTER].getVisibility() == View.VISIBLE) {
-                                    showDetectedResultModal(laundryCategory, colorType);
+                                    showDetectedResultModal(laundryCategory, colorType, topResult);
                                 }
                             }, MODAL_DELAY_AFTER_FLASH_MS);
                         })
@@ -303,13 +351,15 @@ public class MainActivity extends AppCompatActivity {
                 .start();
     }
 
-    private void showDetectedResultModal(String laundryCategory, String colorType) {
+    private void showDetectedResultModal(
+            String laundryCategory,
+            String colorType,
+            TopClassifier.Result topResult) {
         if (detectionCropBitmap == null || detectionCropBox == null || frozenFrameBitmap == null) {
             return;
         }
 
-        detectionResultMessage.setText(
-                getString(R.string.detected_laundry_message, laundryCategory, colorType));
+        detectionResultMessage.setText(createDetectedResultMessage(laundryCategory, colorType, topResult));
         detectionResultImage.setImageBitmap(detectionCropBitmap);
         detectionResultImage.setVisibility(View.INVISIBLE);
         detectionModalScrim.setAlpha(0f);
@@ -529,6 +579,45 @@ public class MainActivity extends AppCompatActivity {
         return Math.max(min, Math.min(value, max));
     }
 
+    private String createDetectedResultMessage(
+            String laundryCategory,
+            String colorType,
+            TopClassifier.Result topResult) {
+        String message = getString(R.string.detected_laundry_message, laundryCategory, colorType);
+        if (topResult == null) {
+            return message;
+        }
+        return message
+                + "\n\uC0C1\uC758 \uC885\uB958: "
+                + topResult.label
+                + " ("
+                + Math.round(topResult.confidence * 100f)
+                + "%)";
+    }
+
+    private String formatDisplayLabel(String label, TopClassifier.Result topResult) {
+        if (label == null || topResult == null) {
+            return label;
+        }
+        return label + " -> " + topResult.label;
+    }
+
+    private boolean isTopLabel(String label) {
+        if (label == null) {
+            return false;
+        }
+        switch (label) {
+            case "short_sleeved_shirt":
+            case "long_sleeved_shirt":
+            case "outerwear":
+            case "vest":
+            case "sling":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private String mapLabelToLaundryCategory(String label) {
         if (label == null) {
             return null;
@@ -550,6 +639,23 @@ public class MainActivity extends AppCompatActivity {
                 return "양말";
             default:
                 return null;
+        }
+    }
+
+    private static final class AnalyzedDetection {
+        final LaundryDetector.DetectionResult detectionResult;
+        final String displayLabel;
+        final float displayConfidence;
+        final TopClassifier.Result topResult;
+
+        AnalyzedDetection(
+                LaundryDetector.DetectionResult detectionResult,
+                String displayLabel,
+                TopClassifier.Result topResult) {
+            this.detectionResult = detectionResult;
+            this.displayLabel = displayLabel;
+            this.topResult = topResult;
+            this.displayConfidence = topResult != null ? topResult.confidence : detectionResult.confidence;
         }
     }
 
