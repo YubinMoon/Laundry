@@ -271,15 +271,16 @@ public class MainActivity extends AppCompatActivity {
         if (stableLabelCount >= REQUIRED_STABLE_LABEL_COUNT) {
             detectionLocked = true;
             analysisEnabled = false;
+            String colorType = LaundryColorAnalyzer.detectColorType(result.frameBitmap, result.normalizedBox);
             setDetectionCrop(createDetectionCrop(result.frameBitmap, result.normalizedBox));
             freezeFrame(result.frameBitmap);
-            flashAndShowDetectedResult(laundryCategory);
+            flashAndShowDetectedResult(laundryCategory, colorType);
         } else {
             recycleFrame(result.frameBitmap);
         }
     }
 
-    private void flashAndShowDetectedResult(String laundryCategory) {
+    private void flashAndShowDetectedResult(String laundryCategory, String colorType) {
         cameraFlash.animate().cancel();
         cameraFlash.setAlpha(0f);
         cameraFlash.setVisibility(View.VISIBLE);
@@ -294,7 +295,7 @@ public class MainActivity extends AppCompatActivity {
                             cameraFlash.postDelayed(() -> {
                                 if (detectionLocked
                                         && pages[PAGE_REGISTER].getVisibility() == View.VISIBLE) {
-                                    showDetectedResultModal(laundryCategory);
+                                    showDetectedResultModal(laundryCategory, colorType);
                                 }
                             }, MODAL_DELAY_AFTER_FLASH_MS);
                         })
@@ -302,12 +303,13 @@ public class MainActivity extends AppCompatActivity {
                 .start();
     }
 
-    private void showDetectedResultModal(String laundryCategory) {
+    private void showDetectedResultModal(String laundryCategory, String colorType) {
         if (detectionCropBitmap == null || detectionCropBox == null || frozenFrameBitmap == null) {
             return;
         }
 
-        detectionResultMessage.setText(getString(R.string.detected_laundry_message, laundryCategory));
+        detectionResultMessage.setText(
+                getString(R.string.detected_laundry_message, laundryCategory, colorType));
         detectionResultImage.setImageBitmap(detectionCropBitmap);
         detectionResultImage.setVisibility(View.INVISIBLE);
         detectionModalScrim.setAlpha(0f);

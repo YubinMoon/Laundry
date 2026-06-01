@@ -4,8 +4,11 @@ import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.YuvImage;
@@ -31,6 +34,7 @@ final class LaundryDetector implements AutoCloseable {
 
     private static final String MODEL_ASSET = "model.tflite";
     private static final String LABEL_ASSET = "label.yaml";
+    private static final int LETTERBOX_COLOR = Color.rgb(114, 114, 114);
 
     private final Interpreter interpreter;
     private final List<String> labels;
@@ -70,25 +74,37 @@ final class LaundryDetector implements AutoCloseable {
 
     DetectionResult detect(ImageProxy imageProxy, float confidenceThreshold) {
         Bitmap frameBitmap = imageProxyToBitmap(imageProxy);
-        Bitmap inputBitmap = Bitmap.createScaledBitmap(frameBitmap, inputWidth, inputHeight, true);
-        fillInputBuffer(inputBitmap);
+        LetterboxImage inputImage = createLetterboxImage(frameBitmap);
+        fillInputBuffer(inputImage.bitmap);
 
         interpreter.run(inputBuffer, outputBuffer);
 
-        if (inputBitmap != frameBitmap) {
-            inputBitmap.recycle();
-        }
+        inputImage.bitmap.recycle();
 
         int bestClassIndex = -1;
         float bestConfidence = 0f;
         RectF bestBox = null;
+        boolean scoreAtIndex4 = isScoreAtIndex4();
         for (int index = 0; index < detectionCount; index++) {
-            float confidence = outputBuffer[0][index][4];
-            int classIndex = Math.round(outputBuffer[0][index][5]);
+            float[] detection = outputBuffer[0][index];
+            DetectionCandidate candidate = readDetectionCandidate(detection, scoreAtIndex4);
+            if (candidate == null) {
+                continue;
+            }
+            float confidence = candidate.confidence;
+            int classIndex = candidate.classIndex;
             if (confidence > bestConfidence && classIndex >= 0 && classIndex < labels.size()) {
+                RectF mappedBox = mapInputBoxToFrame(
+                        readNormalizedInputBox(detection),
+                        inputImage,
+                        frameBitmap.getWidth(),
+                        frameBitmap.getHeight());
+                if (mappedBox == null) {
+                    continue;
+                }
                 bestConfidence = confidence;
                 bestClassIndex = classIndex;
-                bestBox = readNormalizedBox(outputBuffer[0][index]);
+                bestBox = mappedBox;
             }
         }
 
@@ -110,6 +126,27 @@ final class LaundryDetector implements AutoCloseable {
         interpreter.close();
     }
 
+    private LetterboxImage createLetterboxImage(Bitmap frameBitmap) {
+        float scale = Math.min(
+                inputWidth / (float) frameBitmap.getWidth(),
+                inputHeight / (float) frameBitmap.getHeight());
+        int scaledWidth = Math.round(frameBitmap.getWidth() * scale);
+        int scaledHeight = Math.round(frameBitmap.getHeight() * scale);
+        float paddingLeft = (inputWidth - scaledWidth) / 2f;
+        float paddingTop = (inputHeight - scaledHeight) / 2f;
+
+        Bitmap bitmap = Bitmap.createBitmap(inputWidth, inputHeight, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        canvas.drawColor(LETTERBOX_COLOR);
+        Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+        canvas.drawBitmap(
+                frameBitmap,
+                null,
+                new RectF(paddingLeft, paddingTop, paddingLeft + scaledWidth, paddingTop + scaledHeight),
+                paint);
+        return new LetterboxImage(bitmap, scale, paddingLeft, paddingTop);
+    }
+
     private void fillInputBuffer(Bitmap bitmap) {
         bitmap.getPixels(pixels, 0, inputWidth, 0, 0, inputWidth, inputHeight);
         inputBuffer.rewind();
@@ -120,7 +157,46 @@ final class LaundryDetector implements AutoCloseable {
         }
     }
 
-    private RectF readNormalizedBox(float[] detection) {
+    private boolean isScoreAtIndex4() {
+        int scoreAtIndex4Votes = 0;
+        int scoreAtIndex5Votes = 0;
+        for (int index = 0; index < detectionCount; index++) {
+            float[] detection = outputBuffer[0][index];
+            if (isEmptyDetection(detection)) {
+                continue;
+            }
+            if (looksLikeScore(detection[4]) && looksLikeClassIndex(detection[5])) {
+                scoreAtIndex4Votes++;
+            }
+            if (looksLikeClassIndex(detection[4]) && looksLikeScore(detection[5])) {
+                scoreAtIndex5Votes++;
+            }
+        }
+        return scoreAtIndex4Votes >= scoreAtIndex5Votes;
+    }
+
+    private DetectionCandidate readDetectionCandidate(float[] detection, boolean scoreAtIndex4) {
+        DetectionCandidate primary = scoreAtIndex4
+                ? createDetectionCandidate(detection[4], detection[5])
+                : createDetectionCandidate(detection[5], detection[4]);
+        DetectionCandidate fallback = scoreAtIndex4
+                ? createDetectionCandidate(detection[5], detection[4])
+                : createDetectionCandidate(detection[4], detection[5]);
+        return primary != null ? primary : fallback;
+    }
+
+    private DetectionCandidate createDetectionCandidate(float confidence, float classIndexValue) {
+        int classIndex = Math.round(classIndexValue);
+        if (!looksLikeScore(confidence)
+                || !looksLikeClassIndex(classIndexValue)
+                || classIndex < 0
+                || classIndex >= labels.size()) {
+            return null;
+        }
+        return new DetectionCandidate(confidence, classIndex);
+    }
+
+    private RectF readNormalizedInputBox(float[] detection) {
         float left = detection[0];
         float top = detection[1];
         float right = detection[2];
@@ -140,8 +216,56 @@ final class LaundryDetector implements AutoCloseable {
                 clamp01(Math.max(top, bottom)));
     }
 
+    private RectF mapInputBoxToFrame(
+            RectF inputBox,
+            LetterboxImage inputImage,
+            int frameWidth,
+            int frameHeight) {
+        float left = ((inputBox.left * inputWidth) - inputImage.paddingLeft) / inputImage.scale;
+        float top = ((inputBox.top * inputHeight) - inputImage.paddingTop) / inputImage.scale;
+        float right = ((inputBox.right * inputWidth) - inputImage.paddingLeft) / inputImage.scale;
+        float bottom = ((inputBox.bottom * inputHeight) - inputImage.paddingTop) / inputImage.scale;
+
+        left = clamp(left, 0f, frameWidth);
+        top = clamp(top, 0f, frameHeight);
+        right = clamp(right, 0f, frameWidth);
+        bottom = clamp(bottom, 0f, frameHeight);
+        if (right <= left || bottom <= top) {
+            return null;
+        }
+        return new RectF(
+                left / frameWidth,
+                top / frameHeight,
+                right / frameWidth,
+                bottom / frameHeight);
+    }
+
+    private boolean isEmptyDetection(float[] detection) {
+        return detection[0] == 0f
+                && detection[1] == 0f
+                && detection[2] == 0f
+                && detection[3] == 0f
+                && detection[4] == 0f
+                && detection[5] == 0f;
+    }
+
+    private boolean looksLikeScore(float value) {
+        return value >= 0f && value <= 1.0001f;
+    }
+
+    private boolean looksLikeClassIndex(float value) {
+        int roundedValue = Math.round(value);
+        return Math.abs(value - roundedValue) <= 0.01f
+                && roundedValue >= 0
+                && roundedValue < labels.size();
+    }
+
     private static float clamp01(float value) {
         return Math.max(0f, Math.min(1f, value));
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(value, max));
     }
 
     private static Bitmap imageProxyToBitmap(ImageProxy imageProxy) {
@@ -286,6 +410,30 @@ final class LaundryDetector implements AutoCloseable {
             return value.substring(1, value.length() - 1);
         }
         return value;
+    }
+
+    private static final class LetterboxImage {
+        final Bitmap bitmap;
+        final float scale;
+        final float paddingLeft;
+        final float paddingTop;
+
+        LetterboxImage(Bitmap bitmap, float scale, float paddingLeft, float paddingTop) {
+            this.bitmap = bitmap;
+            this.scale = scale;
+            this.paddingLeft = paddingLeft;
+            this.paddingTop = paddingTop;
+        }
+    }
+
+    private static final class DetectionCandidate {
+        final float confidence;
+        final int classIndex;
+
+        DetectionCandidate(float confidence, int classIndex) {
+            this.confidence = confidence;
+            this.classIndex = classIndex;
+        }
     }
 
     static final class DetectionResult {
