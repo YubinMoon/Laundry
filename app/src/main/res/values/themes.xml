@@ -1,0 +1,14 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.EmbededApp" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/laundry_primary</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/laundry_secondary</item>
+        <item name="android:colorAccent">@color/laundry_primary</item>
+        <item name="android:navigationBarColor">@color/laundry_surface</item>
+        <item name="android:statusBarColor">@color/laundry_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <style name="Theme.EmbededApp" parent="Base.Theme.EmbededApp" />
+</resources>
