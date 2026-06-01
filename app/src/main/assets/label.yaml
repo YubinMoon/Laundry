@@ -1,0 +1,32 @@
+description: Ultralytics YOLO26s model trained on C:\Users\TERRY\project\laundry\.dataset\laundry10\data.yaml
+author: Ultralytics
+date: '2026-05-22T01:42:29.316339'
+version: 8.4.51
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: short_sleeved_shirt
+  1: long_sleeved_shirt
+  2: outerwear
+  3: vest
+  4: sling
+  5: shorts
+  6: trousers
+  7: skirt
+  8: sock
+  9: towel
+args:
+  data: null
+  batch: 1
+  fraction: 1.0
+  half: true
+  int8: false
+  nms: false
+channels: 3
+end2end: true

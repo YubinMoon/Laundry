@@ -55,4 +55,8 @@
     <string name="tip_denim_body">찬물 세탁을 권장하고 건조기 사용 여부를 확인하세요.</string>
     <string name="camera_permission_denied">카메라 권한이 필요합니다.</string>
     <string name="camera_start_failed">카메라 화면을 시작할 수 없습니다.</string>
+    <string name="model_load_failed">모델을 불러올 수 없습니다.</string>
+    <string name="detected_laundry_title">세탁물 감지 완료</string>
+    <string name="detected_laundry_message">감지된 빨래감: %1$s</string>
+    <string name="detected_laundry_confirm">확인</string>
 </resources>

@@ -2,8 +2,10 @@ package app.dku.embededapp;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -12,6 +14,8 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.StringRes;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.camera.core.ImageAnalysis;
+import androidx.camera.core.ImageProxy;
 import androidx.camera.view.LifecycleCameraController;
 import androidx.camera.view.PreviewView;
 import androidx.core.graphics.Insets;
@@ -20,6 +24,11 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+
+import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -27,14 +36,27 @@ public class MainActivity extends AppCompatActivity {
     private static final int PAGE_REGISTER = 1;
     private static final int PAGE_GROUPS = 2;
     private static final int PAGE_TIPS = 3;
+    private static final float DETECTION_CONFIDENCE_THRESHOLD = 0.40f;
+    private static final int REQUIRED_STABLE_LABEL_COUNT = 3;
+    private static final long FLASH_HALF_DURATION_MS = 150L;
+    private static final long MODAL_DELAY_AFTER_FLASH_MS = 200L;
 
     private View[] pages;
     private TextView screenTitle;
     private TextView screenSubtitle;
     private BottomNavigationView bottomNavigation;
     private PreviewView cameraPreview;
+    private ImageView frozenFrame;
+    private View cameraFlash;
     private LifecycleCameraController cameraController;
     private ActivityResultLauncher<String> cameraPermissionLauncher;
+    private ExecutorService inferenceExecutor;
+    private LaundryDetector laundryDetector;
+    private volatile boolean analysisEnabled;
+    private volatile boolean detectionLocked;
+    private String lastDetectedLabel;
+    private int stableLabelCount;
+    private Bitmap frozenFrameBitmap;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,8 +80,20 @@ public class MainActivity extends AppCompatActivity {
         screenSubtitle = findViewById(R.id.screen_subtitle);
         bottomNavigation = findViewById(R.id.bottom_navigation);
         cameraPreview = findViewById(R.id.camera_preview);
+        frozenFrame = findViewById(R.id.frozen_frame);
+        cameraFlash = findViewById(R.id.camera_flash);
+
+        inferenceExecutor = Executors.newSingleThreadExecutor();
+        try {
+            laundryDetector = new LaundryDetector(this);
+        } catch (IOException | RuntimeException exception) {
+            Toast.makeText(this, R.string.model_load_failed, Toast.LENGTH_SHORT).show();
+        }
+
         cameraPreview.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         cameraController = new LifecycleCameraController(this);
+        cameraController.setImageAnalysisBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST);
+        cameraController.setImageAnalysisAnalyzer(inferenceExecutor, this::analyzeFrame);
         cameraPreview.setController(cameraController);
 
         cameraPermissionLauncher = registerForActivityResult(
@@ -101,6 +135,22 @@ public class MainActivity extends AppCompatActivity {
         bottomNavigation.setSelectedItemId(R.id.navigation_home);
     }
 
+    @Override
+    protected void onDestroy() {
+        analysisEnabled = false;
+        if (cameraController != null) {
+            cameraController.unbind();
+        }
+        if (laundryDetector != null) {
+            laundryDetector.close();
+        }
+        if (inferenceExecutor != null) {
+            inferenceExecutor.shutdown();
+        }
+        clearFrozenFrame();
+        super.onDestroy();
+    }
+
     private void showPage(int pageIndex, @StringRes int titleId, @StringRes int subtitleId) {
         for (int index = 0; index < pages.length; index++) {
             pages[index].setVisibility(index == pageIndex ? View.VISIBLE : View.GONE);
@@ -119,14 +169,171 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startCameraPreview() {
+        resetDetectionState();
         try {
             cameraController.bindToLifecycle(this);
+            analysisEnabled = laundryDetector != null;
         } catch (RuntimeException exception) {
+            analysisEnabled = false;
             Toast.makeText(this, R.string.camera_start_failed, Toast.LENGTH_SHORT).show();
         }
     }
 
     private void stopCameraPreview() {
+        analysisEnabled = false;
+        detectionLocked = false;
+        resetDetectionState();
         cameraController.unbind();
+    }
+
+    private void analyzeFrame(ImageProxy imageProxy) {
+        LaundryDetector detector = laundryDetector;
+        if (!analysisEnabled || detectionLocked || detector == null) {
+            imageProxy.close();
+            return;
+        }
+
+        LaundryDetector.DetectionResult result = null;
+        try {
+            result = detector.detect(imageProxy, DETECTION_CONFIDENCE_THRESHOLD);
+        } catch (RuntimeException exception) {
+            // Drop malformed camera frames without interrupting the preview.
+        } finally {
+            imageProxy.close();
+        }
+
+        if (result != null) {
+            LaundryDetector.DetectionResult finalResult = result;
+            runOnUiThread(() -> handleDetectionResult(finalResult));
+        }
+    }
+
+    private void handleDetectionResult(LaundryDetector.DetectionResult result) {
+        if (!analysisEnabled
+                || detectionLocked
+                || pages[PAGE_REGISTER].getVisibility() != View.VISIBLE) {
+            recycleFrame(result.frameBitmap);
+            return;
+        }
+
+        String laundryCategory = mapLabelToLaundryCategory(result.label);
+        if (result.label == null || laundryCategory == null) {
+            resetLabelStreak();
+            recycleFrame(result.frameBitmap);
+            return;
+        }
+
+        if (result.label.equals(lastDetectedLabel)) {
+            stableLabelCount++;
+        } else {
+            lastDetectedLabel = result.label;
+            stableLabelCount = 1;
+        }
+
+        if (stableLabelCount >= REQUIRED_STABLE_LABEL_COUNT) {
+            detectionLocked = true;
+            analysisEnabled = false;
+            freezeFrame(result.frameBitmap);
+            flashAndShowDetectedDialog(laundryCategory);
+        } else {
+            recycleFrame(result.frameBitmap);
+        }
+    }
+
+    private void flashAndShowDetectedDialog(String laundryCategory) {
+        cameraFlash.animate().cancel();
+        cameraFlash.setAlpha(0f);
+        cameraFlash.setVisibility(View.VISIBLE);
+        cameraFlash.animate()
+                .alpha(1f)
+                .setDuration(FLASH_HALF_DURATION_MS)
+                .withEndAction(() -> cameraFlash.animate()
+                        .alpha(0f)
+                        .setDuration(FLASH_HALF_DURATION_MS)
+                        .withEndAction(() -> {
+                            cameraFlash.setVisibility(View.GONE);
+                            cameraFlash.postDelayed(() -> {
+                                if (detectionLocked
+                                        && pages[PAGE_REGISTER].getVisibility() == View.VISIBLE) {
+                                    showDetectedDialog(laundryCategory);
+                                }
+                            }, MODAL_DELAY_AFTER_FLASH_MS);
+                        })
+                        .start())
+                .start();
+    }
+
+    private void showDetectedDialog(String laundryCategory) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.detected_laundry_title)
+                .setMessage(getString(R.string.detected_laundry_message, laundryCategory))
+                .setPositiveButton(R.string.detected_laundry_confirm, (dialog, which) -> {
+                    resetDetectionState();
+                    if (pages[PAGE_REGISTER].getVisibility() == View.VISIBLE) {
+                        startCameraPreview();
+                    }
+                })
+                .setCancelable(false)
+                .show();
+    }
+
+    private void freezeFrame(Bitmap bitmap) {
+        clearFrozenFrame();
+        frozenFrameBitmap = bitmap;
+        if (frozenFrameBitmap != null) {
+            frozenFrame.setImageBitmap(frozenFrameBitmap);
+            frozenFrame.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void resetDetectionState() {
+        resetLabelStreak();
+        detectionLocked = false;
+        cameraFlash.animate().cancel();
+        cameraFlash.setAlpha(0f);
+        cameraFlash.setVisibility(View.GONE);
+        clearFrozenFrame();
+    }
+
+    private void resetLabelStreak() {
+        lastDetectedLabel = null;
+        stableLabelCount = 0;
+    }
+
+    private void clearFrozenFrame() {
+        frozenFrame.setImageDrawable(null);
+        frozenFrame.setVisibility(View.GONE);
+        recycleFrame(frozenFrameBitmap);
+        frozenFrameBitmap = null;
+    }
+
+    private void recycleFrame(Bitmap bitmap) {
+        if (bitmap != null && !bitmap.isRecycled()) {
+            bitmap.recycle();
+        }
+    }
+
+    private String mapLabelToLaundryCategory(String label) {
+        if (label == null) {
+            return null;
+        }
+        switch (label) {
+            case "short_sleeved_shirt":
+            case "long_sleeved_shirt":
+            case "outerwear":
+            case "vest":
+            case "sling":
+                return "상의";
+            case "shorts":
+            case "trousers":
+            case "skirt":
+                return "하의";
+            case "towel":
+                return "수건";
+            case "sock":
+                return "양말";
+            default:
+                return null;
+        }
     }
 }
