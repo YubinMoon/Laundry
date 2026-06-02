@@ -66,6 +66,7 @@ public class MainActivity extends AppCompatActivity {
     private ExecutorService inferenceExecutor;
     private LaundryDetector laundryDetector;
     private TopClassifier topClassifier;
+    private BottomClassifier bottomClassifier;
     private volatile boolean analysisEnabled;
     private volatile boolean detectionLocked;
     private String lastDetectedLabel;
@@ -110,12 +111,18 @@ public class MainActivity extends AppCompatActivity {
         inferenceExecutor = Executors.newSingleThreadExecutor();
         LaundryDetector loadedLaundryDetector = null;
         TopClassifier loadedTopClassifier = null;
+        BottomClassifier loadedBottomClassifier = null;
         try {
             loadedLaundryDetector = new LaundryDetector(this);
             loadedTopClassifier = new TopClassifier(this);
+            loadedBottomClassifier = new BottomClassifier(this);
             laundryDetector = loadedLaundryDetector;
             topClassifier = loadedTopClassifier;
+            bottomClassifier = loadedBottomClassifier;
         } catch (IOException | RuntimeException exception) {
+            if (loadedBottomClassifier != null) {
+                loadedBottomClassifier.close();
+            }
             if (loadedTopClassifier != null) {
                 loadedTopClassifier.close();
             }
@@ -188,6 +195,9 @@ public class MainActivity extends AppCompatActivity {
         if (topClassifier != null) {
             topClassifier.close();
         }
+        if (bottomClassifier != null) {
+            bottomClassifier.close();
+        }
         if (inferenceExecutor != null) {
             inferenceExecutor.shutdown();
         }
@@ -233,7 +243,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void analyzeFrame(ImageProxy imageProxy) {
         LaundryDetector detector = laundryDetector;
-        TopClassifier classifier = topClassifier;
+        TopClassifier topClassifier = this.topClassifier;
+        BottomClassifier bottomClassifier = this.bottomClassifier;
         if (!analysisEnabled || detectionLocked || detector == null) {
             imageProxy.close();
             return;
@@ -244,7 +255,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             result = detector.detect(imageProxy, DETECTION_CONFIDENCE_THRESHOLD);
             if (result != null) {
-                analyzedDetection = createAnalyzedDetection(result, classifier);
+                analyzedDetection = createAnalyzedDetection(result, topClassifier, bottomClassifier);
                 result = null;
             }
         } catch (RuntimeException exception) {
@@ -264,22 +275,40 @@ public class MainActivity extends AppCompatActivity {
 
     private AnalyzedDetection createAnalyzedDetection(
             LaundryDetector.DetectionResult result,
-            TopClassifier classifier) {
-        TopClassifier.Result topResult = null;
-        if (classifier != null && isTopLabel(result.label) && result.normalizedBox != null) {
-            DetectionCrop topCrop = null;
+            TopClassifier topClassifier,
+            BottomClassifier bottomClassifier) {
+        ClassificationDetail classificationDetail = null;
+        if (result.normalizedBox != null && (isTopLabel(result.label) || isBottomLabel(result.label))) {
+            DetectionCrop crop = null;
             try {
-                topCrop = createDetectionCrop(result.frameBitmap, result.normalizedBox);
-                if (topCrop != null) {
-                    topResult = classifier.classify(topCrop.bitmap);
+                crop = createDetectionCrop(result.frameBitmap, result.normalizedBox);
+                if (crop != null && isTopLabel(result.label) && topClassifier != null) {
+                    TopClassifier.Result topResult = topClassifier.classify(crop.bitmap);
+                    if (topResult != null) {
+                        classificationDetail = new ClassificationDetail(
+                                "상의 종류",
+                                topResult.label,
+                                topResult.confidence);
+                    }
+                } else if (crop != null && isBottomLabel(result.label) && bottomClassifier != null) {
+                    BottomClassifier.Result bottomResult = bottomClassifier.classify(crop.bitmap);
+                    if (bottomResult != null) {
+                        classificationDetail = new ClassificationDetail(
+                                "하의 종류",
+                                bottomResult.label,
+                                bottomResult.confidence);
+                    }
                 }
             } finally {
-                if (topCrop != null) {
-                    recycleFrame(topCrop.bitmap);
+                if (crop != null) {
+                    recycleFrame(crop.bitmap);
                 }
             }
         }
-        return new AnalyzedDetection(result, formatDisplayLabel(result.label, topResult), topResult);
+        return new AnalyzedDetection(
+                result,
+                formatDisplayLabel(result.label, classificationDetail),
+                classificationDetail);
     }
 
     private void handleDetectionResult(AnalyzedDetection analyzedDetection) {
@@ -319,7 +348,7 @@ public class MainActivity extends AppCompatActivity {
             String colorType = LaundryColorAnalyzer.detectColorType(result.frameBitmap, result.normalizedBox);
             setDetectionCrop(createDetectionCrop(result.frameBitmap, result.normalizedBox));
             freezeFrame(result.frameBitmap);
-            flashAndShowDetectedResult(laundryCategory, colorType, analyzedDetection.topResult);
+            flashAndShowDetectedResult(laundryCategory, colorType, analyzedDetection.classificationDetail);
         } else {
             recycleFrame(result.frameBitmap);
         }
@@ -328,7 +357,7 @@ public class MainActivity extends AppCompatActivity {
     private void flashAndShowDetectedResult(
             String laundryCategory,
             String colorType,
-            TopClassifier.Result topResult) {
+            ClassificationDetail classificationDetail) {
         cameraFlash.animate().cancel();
         cameraFlash.setAlpha(0f);
         cameraFlash.setVisibility(View.VISIBLE);
@@ -343,7 +372,10 @@ public class MainActivity extends AppCompatActivity {
                             cameraFlash.postDelayed(() -> {
                                 if (detectionLocked
                                         && pages[PAGE_REGISTER].getVisibility() == View.VISIBLE) {
-                                    showDetectedResultModal(laundryCategory, colorType, topResult);
+                                    showDetectedResultModal(
+                                            laundryCategory,
+                                            colorType,
+                                            classificationDetail);
                                 }
                             }, MODAL_DELAY_AFTER_FLASH_MS);
                         })
@@ -354,12 +386,15 @@ public class MainActivity extends AppCompatActivity {
     private void showDetectedResultModal(
             String laundryCategory,
             String colorType,
-            TopClassifier.Result topResult) {
+            ClassificationDetail classificationDetail) {
         if (detectionCropBitmap == null || detectionCropBox == null || frozenFrameBitmap == null) {
             return;
         }
 
-        detectionResultMessage.setText(createDetectedResultMessage(laundryCategory, colorType, topResult));
+        detectionResultMessage.setText(createDetectedResultMessage(
+                laundryCategory,
+                colorType,
+                classificationDetail));
         detectionResultImage.setImageBitmap(detectionCropBitmap);
         detectionResultImage.setVisibility(View.INVISIBLE);
         detectionModalScrim.setAlpha(0f);
@@ -582,24 +617,26 @@ public class MainActivity extends AppCompatActivity {
     private String createDetectedResultMessage(
             String laundryCategory,
             String colorType,
-            TopClassifier.Result topResult) {
+            ClassificationDetail classificationDetail) {
         String message = getString(R.string.detected_laundry_message, laundryCategory, colorType);
-        if (topResult == null) {
+        if (classificationDetail == null) {
             return message;
         }
         return message
-                + "\n\uC0C1\uC758 \uC885\uB958: "
-                + topResult.label
+                + "\n"
+                + classificationDetail.type
+                + ": "
+                + classificationDetail.label
                 + " ("
-                + Math.round(topResult.confidence * 100f)
+                + Math.round(classificationDetail.confidence * 100f)
                 + "%)";
     }
 
-    private String formatDisplayLabel(String label, TopClassifier.Result topResult) {
-        if (label == null || topResult == null) {
+    private String formatDisplayLabel(String label, ClassificationDetail classificationDetail) {
+        if (label == null || classificationDetail == null) {
             return label;
         }
-        return label + " -> " + topResult.label;
+        return label + " -> " + classificationDetail.label;
     }
 
     private boolean isTopLabel(String label) {
@@ -612,6 +649,20 @@ public class MainActivity extends AppCompatActivity {
             case "outerwear":
             case "vest":
             case "sling":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private boolean isBottomLabel(String label) {
+        if (label == null) {
+            return false;
+        }
+        switch (label) {
+            case "shorts":
+            case "trousers":
+            case "skirt":
                 return true;
             default:
                 return false;
@@ -646,16 +697,30 @@ public class MainActivity extends AppCompatActivity {
         final LaundryDetector.DetectionResult detectionResult;
         final String displayLabel;
         final float displayConfidence;
-        final TopClassifier.Result topResult;
+        final ClassificationDetail classificationDetail;
 
         AnalyzedDetection(
                 LaundryDetector.DetectionResult detectionResult,
                 String displayLabel,
-                TopClassifier.Result topResult) {
+                ClassificationDetail classificationDetail) {
             this.detectionResult = detectionResult;
             this.displayLabel = displayLabel;
-            this.topResult = topResult;
-            this.displayConfidence = topResult != null ? topResult.confidence : detectionResult.confidence;
+            this.classificationDetail = classificationDetail;
+            this.displayConfidence = classificationDetail != null
+                    ? classificationDetail.confidence
+                    : detectionResult.confidence;
+        }
+    }
+
+    private static final class ClassificationDetail {
+        final String type;
+        final String label;
+        final float confidence;
+
+        ClassificationDetail(String type, String label, float confidence) {
+            this.type = type;
+            this.label = label;
+            this.confidence = confidence;
         }
     }
 

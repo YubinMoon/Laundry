@@ -1,6 +1,6 @@
-description: Ultralytics YOLO26n-cls model trained on C:\Users\TERRY\project\laundryYolo\.dataset\top_cls
+description: Ultralytics YOLO26n-cls model trained on C:\Users\TERRY\project\laundryYolo\.dataset\bottom_cls
 author: Ultralytics
-date: '2026-06-02T01:47:40.137798'
+date: '2026-06-02T03:48:57.151184'
 version: 8.4.51
 license: AGPL-3.0 License (https://ultralytics.com/license)
 docs: https://docs.ultralytics.com
@@ -12,11 +12,11 @@ imgsz:
 - 320
 names:
   0: Activewear
-  1: Denim
-  2: Hoodies
-  3: Shirts
-  4: Sweaters
-  5: T-shirts
+  1: Chinos
+  2: Jeans
+  3: Joggers
+  4: Skirts
+  5: Slacks
 args:
   data: null
   batch: 1
