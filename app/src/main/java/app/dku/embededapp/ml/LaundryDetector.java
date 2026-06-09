@@ -1,4 +1,4 @@
-package app.dku.embededapp;
+package app.dku.embededapp.ml;
 
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
@@ -30,7 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-final class LaundryDetector implements AutoCloseable {
+public final class LaundryDetector implements AutoCloseable {
 
     private static final String MODEL_ASSET = "main-model.tflite";
     private static final String LABEL_ASSET = "main-label.yaml";
@@ -47,7 +47,7 @@ final class LaundryDetector implements AutoCloseable {
     private final float[][][] outputBuffer;
     private final int[] pixels;
 
-    LaundryDetector(Context context) throws IOException {
+    public LaundryDetector(Context context) throws IOException {
         interpreter = new Interpreter(loadModel(context, MODEL_ASSET));
         labels = loadLabels(context);
 
@@ -72,7 +72,7 @@ final class LaundryDetector implements AutoCloseable {
         pixels = new int[inputWidth * inputHeight];
     }
 
-    DetectionResult detect(ImageProxy imageProxy, float confidenceThreshold) {
+    public DetectionResult detect(ImageProxy imageProxy, float confidenceThreshold) {
         Bitmap frameBitmap = imageProxyToBitmap(imageProxy);
         LetterboxImage inputImage = createLetterboxImage(frameBitmap);
         fillInputBuffer(inputImage.bitmap);
@@ -436,13 +436,13 @@ final class LaundryDetector implements AutoCloseable {
         }
     }
 
-    static final class DetectionResult {
-        final String label;
-        final float confidence;
-        final RectF normalizedBox;
-        final Bitmap frameBitmap;
-        final int frameWidth;
-        final int frameHeight;
+    public static final class DetectionResult {
+        public final String label;
+        public final float confidence;
+        public final RectF normalizedBox;
+        public final Bitmap frameBitmap;
+        public final int frameWidth;
+        public final int frameHeight;
 
         DetectionResult(
                 String label,

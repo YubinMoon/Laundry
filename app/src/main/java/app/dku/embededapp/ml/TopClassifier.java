@@ -1,4 +1,4 @@
-package app.dku.embededapp;
+package app.dku.embededapp.ml;
 
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
@@ -18,7 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-final class TopClassifier implements AutoCloseable {
+public final class TopClassifier implements AutoCloseable {
 
     private static final String MODEL_ASSET = "top-model.tflite";
     private static final String LABEL_ASSET = "top-label.yaml";
@@ -33,7 +33,7 @@ final class TopClassifier implements AutoCloseable {
     private final ByteBuffer outputBuffer;
     private final int[] pixels;
 
-    TopClassifier(Context context) throws IOException {
+    public TopClassifier(Context context) throws IOException {
         interpreter = new Interpreter(loadModel(context, MODEL_ASSET));
         labels = loadLabels(context, LABEL_ASSET);
 
@@ -57,7 +57,7 @@ final class TopClassifier implements AutoCloseable {
         pixels = new int[inputWidth * inputHeight];
     }
 
-    Result classify(Bitmap bitmap) {
+    public Result classify(Bitmap bitmap) {
         if (bitmap == null || bitmap.isRecycled()) {
             return null;
         }
@@ -94,7 +94,7 @@ final class TopClassifier implements AutoCloseable {
         interpreter.close();
     }
 
-    String[] getLabels() {
+    public String[] getLabels() {
         return labels.toArray(new String[0]);
     }
 
@@ -162,9 +162,9 @@ final class TopClassifier implements AutoCloseable {
         return value;
     }
 
-    static final class Result {
-        final String label;
-        final float confidence;
+    public static final class Result {
+        public final String label;
+        public final float confidence;
 
         Result(String label, float confidence) {
             this.label = label;

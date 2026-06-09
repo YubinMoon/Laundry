@@ -1,4 +1,4 @@
-package app.dku.embededapp;
+package app.dku.embededapp.data;
 
 import android.content.ContentValues;
 import android.content.Context;
@@ -11,7 +11,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.UUID;
 
-final class LaundryRecordStore extends SQLiteOpenHelper {
+public final class LaundryRecordStore extends SQLiteOpenHelper {
     private static final String DATABASE_NAME = "laundry_records.db";
     private static final int DATABASE_VERSION = 1;
     private static final String TABLE_RECORDS = "laundry_records";
@@ -30,7 +30,7 @@ final class LaundryRecordStore extends SQLiteOpenHelper {
 
     private final Context appContext;
 
-    LaundryRecordStore(Context context) {
+    public LaundryRecordStore(Context context) {
         super(context.getApplicationContext(), DATABASE_NAME, null, DATABASE_VERSION);
         appContext = context.getApplicationContext();
     }
@@ -56,7 +56,7 @@ final class LaundryRecordStore extends SQLiteOpenHelper {
         // Version 1 is the initial schema.
     }
 
-    long saveRecord(Bitmap cropBitmap, LaundryRecord record) throws IOException {
+    public long saveRecord(Bitmap cropBitmap, LaundryRecord record) throws IOException {
         validate(cropBitmap, record);
 
         File imageFile = createImageFile(record.createdAt);

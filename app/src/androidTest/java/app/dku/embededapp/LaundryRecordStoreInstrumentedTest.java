@@ -19,6 +19,9 @@ import org.junit.runner.RunWith;
 
 import java.io.File;
 
+import app.dku.embededapp.data.LaundryRecord;
+import app.dku.embededapp.data.LaundryRecordStore;
+
 @RunWith(AndroidJUnit4.class)
 public class LaundryRecordStoreInstrumentedTest {
     private static final String DATABASE_NAME = "laundry_records.db";

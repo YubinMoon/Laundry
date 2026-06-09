@@ -1,4 +1,4 @@
-package app.dku.embededapp;
+package app.dku.embededapp.ui.detection;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -9,6 +9,8 @@ import android.view.View;
 
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
+
+import app.dku.embededapp.R;
 
 public class DetectionOverlayView extends View {
 
@@ -37,7 +39,7 @@ public class DetectionOverlayView extends View {
         labelTextPaint.setFakeBoldText(true);
     }
 
-    void showDetection(
+    public void showDetection(
             String label,
             float confidence,
             RectF box,
@@ -51,7 +53,7 @@ public class DetectionOverlayView extends View {
         invalidate();
     }
 
-    void clearDetection() {
+    public void clearDetection() {
         normalizedBox = null;
         labelText = null;
         setVisibility(GONE);

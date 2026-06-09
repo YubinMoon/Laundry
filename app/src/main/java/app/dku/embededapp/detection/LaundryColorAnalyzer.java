@@ -1,4 +1,4 @@
-package app.dku.embededapp;
+package app.dku.embededapp.detection;
 
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -21,8 +21,13 @@ final class LaundryColorAnalyzer {
     private static final int BUCKET_BLACK = 1;
     private static final int BUCKET_BRIGHT = 2;
     private static final int BUCKET_DARK = 3;
-    private static final String[] COLOR_TYPE_LABELS = {"흰색", "검은색", "밝은색", "어두운색"};
-    private static final String MIXED_COLOR_LABEL = "혼합";
+    private static final String[] COLOR_TYPE_LABELS = {
+            LaundryCategory.COLOR_WHITE,
+            LaundryCategory.COLOR_BLACK,
+            LaundryCategory.COLOR_BRIGHT,
+            LaundryCategory.COLOR_DARK
+    };
+    private static final String MIXED_COLOR_LABEL = LaundryCategory.COLOR_MIXED;
 
     private LaundryColorAnalyzer() {
     }
