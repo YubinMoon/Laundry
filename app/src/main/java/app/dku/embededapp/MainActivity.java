@@ -3,7 +3,6 @@ package app.dku.embededapp;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
-import android.view.View;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
@@ -13,48 +12,35 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.view.LifecycleCameraController;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
-
-import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 import java.io.IOException;
 
 import app.dku.embededapp.detection.AnalyzedDetection;
 import app.dku.embededapp.detection.DetectionController;
 import app.dku.embededapp.detection.StableDetection;
+import app.dku.embededapp.ui.compose.LaundryComposeHost;
 import app.dku.embededapp.ui.detection.DetectionOverlayView;
 import app.dku.embededapp.ui.detection.DetectionResultController;
-import app.dku.embededapp.ui.groups.LaundryGroupController;
-import app.dku.embededapp.ui.navigation.PageNavigator;
 
 public class MainActivity extends AppCompatActivity implements DetectionController.Listener {
-    private PageNavigator pageNavigator;
-    private BottomNavigationView bottomNavigation;
+    private LaundryComposeHost.Handles uiHandles;
     private PreviewView cameraPreview;
     private DetectionOverlayView detectionOverlay;
     private LifecycleCameraController cameraController;
     private ActivityResultLauncher<String> cameraPermissionLauncher;
     private DetectionController detectionController;
     private DetectionResultController detectionResultController;
-    private LaundryGroupController laundryGroupController;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
-        setContentView(R.layout.activity_main);
 
-        setupSystemInsets();
-        setupNavigation();
-        setupGroups();
+        uiHandles = LaundryComposeHost.install(this, createUiCallbacks());
         setupCamera();
         setupDetection();
-        setupBottomNavigation();
-        setupButtons();
 
-        bottomNavigation.setSelectedItemId(R.id.navigation_home);
+        showPage(LaundryComposeHost.PAGE_HOME);
     }
 
     @Override
@@ -68,8 +54,8 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
         if (detectionResultController != null) {
             detectionResultController.close();
         }
-        if (laundryGroupController != null) {
-            laundryGroupController.close();
+        if (uiHandles != null) {
+            uiHandles.close();
         }
         super.onDestroy();
     }
@@ -99,30 +85,8 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
         detectionResultController.showStableDetection(detection);
     }
 
-    private void setupSystemInsets() {
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (view, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
-    }
-
-    private void setupNavigation() {
-        View[] pages = new View[] {
-                findViewById(R.id.page_home),
-                findViewById(R.id.page_register),
-                findViewById(R.id.page_groups),
-                findViewById(R.id.page_tips)
-        };
-        pageNavigator = new PageNavigator(
-                pages,
-                findViewById(R.id.screen_title),
-                findViewById(R.id.screen_subtitle));
-        bottomNavigation = findViewById(R.id.bottom_navigation);
-    }
-
     private void setupCamera() {
-        cameraPreview = findViewById(R.id.camera_preview);
+        cameraPreview = uiHandles.getCameraPreview();
         cameraPreview.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         cameraController = new LifecycleCameraController(this);
         cameraPreview.setController(cameraController);
@@ -138,14 +102,8 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
                 });
     }
 
-    private void setupGroups() {
-        laundryGroupController = new LaundryGroupController(
-                this,
-                pageNavigator.getPage(PageNavigator.PAGE_GROUPS));
-    }
-
     private void setupDetection() {
-        detectionOverlay = findViewById(R.id.detection_overlay);
+        detectionOverlay = uiHandles.getDetectionOverlay();
 
         String[] topDetailTypes = DetectionController.defaultTopDetailTypes();
         String[] bottomDetailTypes = DetectionController.defaultBottomDetailTypes();
@@ -159,12 +117,13 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
 
         detectionResultController = new DetectionResultController(
                 this,
-                pageNavigator.getPage(PageNavigator.PAGE_REGISTER),
+                uiHandles.getRegisterPage(),
+                uiHandles.getDetectionResultViews(),
                 topDetailTypes,
                 bottomDetailTypes,
                 () -> {
-                    if (laundryGroupController != null) {
-                        laundryGroupController.refresh();
+                    if (uiHandles != null) {
+                        uiHandles.refreshGroups();
                     }
                     if (isRegisterPageVisible()) {
                         startCameraPreview();
@@ -172,47 +131,39 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
                 });
     }
 
-    private void setupBottomNavigation() {
-        bottomNavigation.setOnItemSelectedListener(item -> {
-            int itemId = item.getItemId();
-            if (itemId == R.id.navigation_home) {
-                stopCameraPreview();
-                pageNavigator.showPage(
-                        PageNavigator.PAGE_HOME,
-                        R.string.home_title,
-                        R.string.home_subtitle);
-            } else if (itemId == R.id.navigation_register) {
-                pageNavigator.showPage(
-                        PageNavigator.PAGE_REGISTER,
-                        R.string.register_title,
-                        R.string.register_subtitle);
-                ensureCameraPreview();
-            } else if (itemId == R.id.navigation_groups) {
-                stopCameraPreview();
-                pageNavigator.showPage(
-                        PageNavigator.PAGE_GROUPS,
-                        R.string.groups_title,
-                        R.string.groups_subtitle);
-                laundryGroupController.refresh();
-            } else if (itemId == R.id.navigation_tips) {
-                stopCameraPreview();
-                pageNavigator.showPage(
-                        PageNavigator.PAGE_TIPS,
-                        R.string.tips_title,
-                        R.string.tips_subtitle);
-            } else {
-                return false;
+    private LaundryComposeHost.Callbacks createUiCallbacks() {
+        return new LaundryComposeHost.Callbacks() {
+            @Override
+            public void onPageSelected(int page) {
+                showPage(page);
             }
-            return true;
-        });
+
+            @Override
+            public void onStartRegisterClicked() {
+                showPage(LaundryComposeHost.PAGE_REGISTER);
+            }
+
+            @Override
+            public void onViewGroupsClicked() {
+                showPage(LaundryComposeHost.PAGE_GROUPS);
+            }
+
+            @Override
+            public void onStartCameraClicked() {
+                ensureCameraPreview();
+            }
+        };
     }
 
-    private void setupButtons() {
-        findViewById(R.id.button_register).setOnClickListener(
-                view -> bottomNavigation.setSelectedItemId(R.id.navigation_register));
-        findViewById(R.id.button_view_groups).setOnClickListener(
-                view -> bottomNavigation.setSelectedItemId(R.id.navigation_groups));
-        findViewById(R.id.button_capture).setOnClickListener(view -> ensureCameraPreview());
+    private void showPage(int page) {
+        if (page == LaundryComposeHost.PAGE_REGISTER) {
+            uiHandles.showPage(page);
+            ensureCameraPreview();
+            return;
+        }
+
+        stopCameraPreview();
+        uiHandles.showPage(page);
     }
 
     private void ensureCameraPreview() {
@@ -252,6 +203,6 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
     }
 
     private boolean isRegisterPageVisible() {
-        return pageNavigator.isPageVisible(PageNavigator.PAGE_REGISTER);
+        return uiHandles != null && uiHandles.isRegisterPageVisible();
     }
 }

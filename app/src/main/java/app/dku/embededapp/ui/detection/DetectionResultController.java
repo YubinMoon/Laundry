@@ -62,6 +62,7 @@ public final class DetectionResultController implements AutoCloseable {
     public DetectionResultController(
             Activity activity,
             View registerPage,
+            Views views,
             String[] topDetailTypes,
             String[] bottomDetailTypes,
             Runnable onRecordSaved) {
@@ -72,20 +73,59 @@ public final class DetectionResultController implements AutoCloseable {
         this.onRecordSaved = onRecordSaved;
         laundryRecordStore = new LaundryRecordStore(activity);
 
-        frozenFrame = activity.findViewById(R.id.frozen_frame);
-        cameraFlash = activity.findViewById(R.id.camera_flash);
-        detectionModalScrim = activity.findViewById(R.id.detection_modal_scrim);
-        detectionResultModal = activity.findViewById(R.id.detection_result_modal);
-        detectionResultImage = activity.findViewById(R.id.detection_result_image);
-        detectionTransitionImage = activity.findViewById(R.id.detection_transition_image);
-        detectionCategoryDropdown = activity.findViewById(R.id.detection_category_dropdown);
-        detectionDetailDropdownContainer = activity.findViewById(R.id.detection_detail_group);
-        detectionDetailDropdown = activity.findViewById(R.id.detection_detail_dropdown);
-        detectionColorDropdown = activity.findViewById(R.id.detection_color_dropdown);
-        detectionResultConfirm = activity.findViewById(R.id.detection_result_confirm);
+        frozenFrame = views.frozenFrame;
+        cameraFlash = views.cameraFlash;
+        detectionModalScrim = views.detectionModalScrim;
+        detectionResultModal = views.detectionResultModal;
+        detectionResultImage = views.detectionResultImage;
+        detectionTransitionImage = views.detectionTransitionImage;
+        detectionCategoryDropdown = views.detectionCategoryDropdown;
+        detectionDetailDropdownContainer = views.detectionDetailDropdownContainer;
+        detectionDetailDropdown = views.detectionDetailDropdown;
+        detectionColorDropdown = views.detectionColorDropdown;
+        detectionResultConfirm = views.detectionResultConfirm;
 
         setupDetectionDropdowns();
         detectionResultConfirm.setOnClickListener(view -> saveDetectionResultAndResume());
+    }
+
+    public static final class Views {
+        public final ImageView frozenFrame;
+        public final View cameraFlash;
+        public final View detectionModalScrim;
+        public final View detectionResultModal;
+        public final ImageView detectionResultImage;
+        public final ImageView detectionTransitionImage;
+        public final MaterialButton detectionCategoryDropdown;
+        public final View detectionDetailDropdownContainer;
+        public final MaterialButton detectionDetailDropdown;
+        public final MaterialButton detectionColorDropdown;
+        public final MaterialButton detectionResultConfirm;
+
+        public Views(
+                ImageView frozenFrame,
+                View cameraFlash,
+                View detectionModalScrim,
+                View detectionResultModal,
+                ImageView detectionResultImage,
+                ImageView detectionTransitionImage,
+                MaterialButton detectionCategoryDropdown,
+                View detectionDetailDropdownContainer,
+                MaterialButton detectionDetailDropdown,
+                MaterialButton detectionColorDropdown,
+                MaterialButton detectionResultConfirm) {
+            this.frozenFrame = frozenFrame;
+            this.cameraFlash = cameraFlash;
+            this.detectionModalScrim = detectionModalScrim;
+            this.detectionResultModal = detectionResultModal;
+            this.detectionResultImage = detectionResultImage;
+            this.detectionTransitionImage = detectionTransitionImage;
+            this.detectionCategoryDropdown = detectionCategoryDropdown;
+            this.detectionDetailDropdownContainer = detectionDetailDropdownContainer;
+            this.detectionDetailDropdown = detectionDetailDropdown;
+            this.detectionColorDropdown = detectionColorDropdown;
+            this.detectionResultConfirm = detectionResultConfirm;
+        }
     }
 
     public void showStableDetection(StableDetection detection) {

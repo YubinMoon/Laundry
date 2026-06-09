@@ -1,0 +1,925 @@
+package app.dku.embededapp.ui.compose
+
+import android.content.Context
+import android.graphics.BitmapFactory
+import android.view.View
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.annotation.ColorRes
+import androidx.annotation.StringRes
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import java.io.File
+import app.dku.embededapp.R
+import app.dku.embededapp.data.LaundryRecordStore
+import app.dku.embededapp.detection.LaundryCategory
+
+object LaundryComposeHost {
+    const val PAGE_HOME = 0
+    const val PAGE_REGISTER = 1
+    const val PAGE_GROUPS = 2
+    const val PAGE_TIPS = 3
+
+    interface Callbacks {
+        fun onPageSelected(page: Int)
+        fun onStartRegisterClicked()
+        fun onViewGroupsClicked()
+        fun onStartCameraClicked()
+    }
+
+    @JvmStatic
+    fun install(activity: ComponentActivity, callbacks: Callbacks): Handles {
+        val selectedPage = mutableIntStateOf(PAGE_HOME)
+        val registerViews = RegisterInteropViews(activity)
+        val groupsController = LaundryGroupsController(activity)
+        val handles = Handles(selectedPage, registerViews, groupsController)
+
+        activity.setContent {
+            LaundryTheme {
+                LaundryApp(
+                    selectedPage = selectedPage.intValue,
+                    registerViews = registerViews,
+                    groupsController = groupsController,
+                    callbacks = callbacks,
+                )
+            }
+        }
+
+        return handles
+    }
+
+    class Handles internal constructor(
+        private val selectedPage: androidx.compose.runtime.MutableIntState,
+        private val registerViews: RegisterInteropViews,
+        private val groupsController: LaundryGroupsController,
+    ) : AutoCloseable {
+        fun showPage(page: Int) {
+            selectedPage.intValue = page
+            registerViews.root.visibility = if (page == PAGE_REGISTER) View.VISIBLE else View.GONE
+            if (page == PAGE_GROUPS) {
+                groupsController.refresh()
+            }
+        }
+
+        fun isRegisterPageVisible(): Boolean = selectedPage.intValue == PAGE_REGISTER
+
+        fun getRegisterPage(): View = registerViews.root
+
+        fun getCameraPreview() = registerViews.cameraPreview
+
+        fun getDetectionOverlay() = registerViews.detectionOverlay
+
+        fun getDetectionResultViews() = registerViews.detectionResultViews
+
+        fun refreshGroups() {
+            groupsController.refresh()
+        }
+
+        override fun close() {
+            groupsController.close()
+        }
+    }
+}
+
+@Composable
+fun LaundryApp(
+    selectedPage: Int,
+    registerViews: RegisterInteropViews,
+    groupsController: LaundryGroupsController,
+    callbacks: LaundryComposeHost.Callbacks,
+) {
+    val background = colorResource(R.color.laundry_background)
+
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(background),
+        containerColor = background,
+        contentWindowInsets = WindowInsets.safeDrawing,
+        bottomBar = {
+            LaundryNavigationBar(
+                selectedPage = selectedPage,
+                onPageSelected = callbacks::onPageSelected,
+            )
+        },
+    ) { contentPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(contentPadding),
+        ) {
+            Header(selectedPage = selectedPage)
+            Box(modifier = Modifier.weight(1f)) {
+                when (selectedPage) {
+                    LaundryComposeHost.PAGE_REGISTER -> RegisterPage(
+                        registerViews = registerViews,
+                        onStartCameraClicked = callbacks::onStartCameraClicked,
+                    )
+
+                    LaundryComposeHost.PAGE_GROUPS -> LaundryGroupsScreen(groupsController)
+                    LaundryComposeHost.PAGE_TIPS -> TipsPage()
+                    else -> HomePage(
+                        onRegisterClick = callbacks::onStartRegisterClicked,
+                        onViewGroupsClick = callbacks::onViewGroupsClicked,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Header(selectedPage: Int) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, top = 18.dp, end = 24.dp, bottom = 12.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.app_label),
+            color = colorResource(R.color.laundry_primary),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 2.16.sp,
+        )
+        Text(
+            text = stringResource(titleFor(selectedPage)),
+            modifier = Modifier.padding(top = 10.dp),
+            color = colorResource(R.color.laundry_text),
+            fontSize = 29.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = stringResource(subtitleFor(selectedPage)),
+            modifier = Modifier.padding(top = 5.dp),
+            color = colorResource(R.color.laundry_text_muted),
+            fontSize = 14.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun LaundryNavigationBar(
+    selectedPage: Int,
+    onPageSelected: (Int) -> Unit,
+) {
+    NavigationBar(
+        containerColor = colorResource(R.color.laundry_surface),
+    ) {
+        navItems().forEach { item ->
+            NavigationBarItem(
+                selected = selectedPage == item.page,
+                onClick = { onPageSelected(item.page) },
+                icon = {
+                    Icon(
+                        painter = painterResource(item.iconResId),
+                        contentDescription = null,
+                    )
+                },
+                label = { Text(stringResource(item.labelResId)) },
+            )
+        }
+    }
+}
+
+@Composable
+fun HomePage(
+    onRegisterClick: () -> Unit,
+    onViewGroupsClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 22.dp),
+    ) {
+        PriorityCard(onRegisterClick = onRegisterClick)
+        Text(
+            text = stringResource(R.string.summary_title),
+            modifier = Modifier.padding(top = 25.dp),
+            color = colorResource(R.color.laundry_text),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SummaryCard(
+                label = stringResource(R.string.active_laundry),
+                value = stringResource(R.string.active_value),
+                badge = stringResource(R.string.status_active),
+                modifier = Modifier.weight(1f),
+            )
+            SummaryCard(
+                label = stringResource(R.string.remaining_groups),
+                value = stringResource(R.string.remaining_value),
+                modifier = Modifier.weight(1f),
+            )
+            SummaryCard(
+                label = stringResource(R.string.next_laundry),
+                value = stringResource(R.string.next_value),
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.recommend_title),
+                modifier = Modifier.weight(1f),
+                color = colorResource(R.color.laundry_text),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            TextButton(onClick = onViewGroupsClick) {
+                Text(stringResource(R.string.view_all))
+            }
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = colorResource(R.color.laundry_surface)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        ) {
+            Column(modifier = Modifier.padding(17.dp)) {
+                Text(
+                    text = stringResource(R.string.recommend_first),
+                    color = colorResource(R.color.laundry_text),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = stringResource(R.string.recommend_second),
+                    modifier = Modifier.padding(top = 17.dp),
+                    color = colorResource(R.color.laundry_text),
+                    fontSize = 15.sp,
+                )
+                Text(
+                    text = stringResource(R.string.recommend_third),
+                    modifier = Modifier.padding(top = 17.dp),
+                    color = colorResource(R.color.laundry_text),
+                    fontSize = 15.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PriorityCard(onRegisterClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = colorResource(R.color.laundry_primary)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            StatusBadge(
+                text = stringResource(R.string.priority_badge),
+                foreground = R.color.laundry_success,
+                background = R.color.laundry_success_background,
+            )
+            Text(
+                text = stringResource(R.string.priority_group),
+                modifier = Modifier.padding(top = 17.dp),
+                color = colorResource(R.color.white),
+                fontSize = 23.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = stringResource(R.string.priority_reason),
+                modifier = Modifier.padding(top = 6.dp),
+                color = colorResource(R.color.white).copy(alpha = 0.85f),
+                fontSize = 14.sp,
+            )
+            Button(
+                onClick = onRegisterClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 20.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colorResource(R.color.white),
+                    contentColor = colorResource(R.color.laundry_primary_dark),
+                ),
+            ) {
+                Text(stringResource(R.string.start_register))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryCard(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    badge: String? = null,
+) {
+    Card(
+        modifier = modifier.height(115.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = colorResource(R.color.laundry_surface)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+        ) {
+            Text(
+                text = label,
+                color = colorResource(R.color.laundry_text_muted),
+                fontSize = 12.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = value,
+                modifier = Modifier.padding(top = 12.dp),
+                color = colorResource(R.color.laundry_text),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (badge != null) {
+                StatusBadge(
+                    text = badge,
+                    foreground = R.color.laundry_warning,
+                    background = R.color.laundry_warning_background,
+                    modifier = Modifier.padding(top = 7.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Hosts the CameraX PreviewView and detection modal as Android Views inside the
+ * Compose tree. This preserves the original camera pipeline and crop animation
+ * while removing the XML layout file that previously owned these views.
+ */
+@Composable
+fun RegisterPage(
+    registerViews: RegisterInteropViews,
+    onStartCameraClicked: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AndroidView(
+        factory = { registerViews.root },
+        modifier = modifier.fillMaxSize(),
+        update = {
+            registerViews.captureButton.setOnClickListener {
+                onStartCameraClicked()
+            }
+        },
+    )
+}
+
+@Composable
+fun LaundryGroupsScreen(
+    controller: LaundryGroupsController,
+    modifier: Modifier = Modifier,
+) {
+    var selectedFilter by remember { mutableStateOf(R.string.filter_category) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 22.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.filter_title),
+            color = colorResource(R.color.laundry_text),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Row(
+            modifier = Modifier
+                .padding(top = 12.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(
+                R.string.filter_category,
+                R.string.filter_color,
+                R.string.filter_material,
+                R.string.filter_recommend,
+            ).forEach { label ->
+                FilterChip(
+                    selected = selectedFilter == label,
+                    onClick = {
+                        selectedFilter = label
+                        controller.refresh()
+                    },
+                    label = { Text(stringResource(label)) },
+                )
+            }
+        }
+
+        if (controller.records.isEmpty()) {
+            Text(
+                text = stringResource(R.string.groups_empty_state),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 28.dp)
+                    .padding(20.dp),
+                color = colorResource(R.color.laundry_text_muted),
+                fontSize = 14.sp,
+            )
+        } else {
+            GroupSummaryCard(
+                recordCount = controller.records.size,
+                done = controller.singleGroupDone,
+                onClick = controller::showDetails,
+                modifier = Modifier.padding(top = 18.dp),
+            )
+        }
+    }
+
+    if (controller.detailsVisible) {
+        GroupDetailsDialog(controller = controller)
+    }
+    controller.pendingDelete?.let { record ->
+        DeleteRecordDialog(
+            onDismiss = controller::clearPendingDelete,
+            onConfirm = { controller.deleteRecord(record) },
+        )
+    }
+}
+
+@Composable
+private fun GroupSummaryCard(
+    recordCount: Int,
+    done: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = colorResource(R.color.laundry_surface)),
+        border = BorderStroke(1.dp, colorResource(R.color.laundry_line)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.group_all_records_title),
+                    color = colorResource(R.color.laundry_text),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = groupDetail(recordCount, done),
+                    modifier = Modifier.padding(top = 6.dp),
+                    color = colorResource(R.color.laundry_text_muted),
+                    fontSize = 13.sp,
+                )
+            }
+            StatusBadge(
+                text = stringResource(if (done) R.string.status_done else R.string.status_pending),
+                foreground = if (done) R.color.laundry_success else R.color.laundry_warning,
+                background = if (done) R.color.laundry_success_background else R.color.laundry_warning_background,
+            )
+        }
+    }
+}
+
+@Composable
+private fun GroupDetailsDialog(controller: LaundryGroupsController) {
+    AlertDialog(
+        onDismissRequest = controller::hideDetails,
+        title = {
+            Text(
+                text = stringResource(R.string.group_all_records_title),
+                color = colorResource(R.color.laundry_text),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = groupDetail(controller.records.size, controller.singleGroupDone),
+                    color = colorResource(R.color.laundry_text_muted),
+                    fontSize = 14.sp,
+                )
+                LazyColumn(
+                    modifier = Modifier
+                        .padding(top = 14.dp)
+                        .heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(controller.records, key = { it.id }) { record ->
+                        GroupRecordCard(
+                            storedRecord = record,
+                            imageFile = controller.imageFile(record),
+                            onDelete = { controller.requestDelete(record) },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = controller::markDone,
+                enabled = !controller.singleGroupDone,
+                shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+            ) {
+                Text(stringResource(if (controller.singleGroupDone) R.string.group_done_disabled else R.string.group_done_button))
+            }
+        },
+    )
+}
+
+@Composable
+private fun GroupRecordCard(
+    storedRecord: LaundryRecordStore.StoredRecord,
+    imageFile: File,
+    onDelete: () -> Unit,
+) {
+    val imageBitmap = remember(imageFile.path, imageFile.lastModified()) {
+        BitmapFactory.decodeFile(imageFile.path)?.asImageBitmap()
+    }
+    val record = storedRecord.record
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = colorResource(R.color.laundry_surface)),
+        border = BorderStroke(2.dp, colorResource(R.color.laundry_line)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(colorResource(R.color.laundry_line)),
+            ) {
+                if (imageBitmap != null) {
+                    Image(
+                        bitmap = imageBitmap,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp),
+            ) {
+                Text(
+                    text = displayCategory(record.category) + " - " + valueOrNone(LaundryCategory.displayColor(record.color)),
+                    color = colorResource(R.color.laundry_text),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                InfoText(R.string.group_record_detail_type, valueOrNone(record.detailType))
+                InfoText(R.string.group_record_detected_label, valueOrNone(record.detectedLabel))
+            }
+            TextButton(
+                onClick = onDelete,
+                modifier = Modifier.wrapContentWidth(),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.group_record_delete),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoText(@StringRes labelResId: Int, value: String) {
+    Text(
+        text = stringResource(labelResId) + ": " + value,
+        color = colorResource(R.color.laundry_text_muted),
+        fontSize = 12.sp,
+    )
+}
+
+@Composable
+private fun DeleteRecordDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.group_record_delete_title)) },
+        text = { Text(stringResource(R.string.group_record_delete_message)) },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.group_record_delete_cancel))
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.group_record_delete))
+            }
+        },
+    )
+}
+
+@Composable
+fun TipsPage(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 22.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.tip_header),
+            color = colorResource(R.color.laundry_text),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        TipCard(
+            title = stringResource(R.string.tip_towel_title),
+            body = stringResource(R.string.tip_towel_body),
+            modifier = Modifier.padding(top = 14.dp),
+        )
+        TipCard(
+            title = stringResource(R.string.tip_black_title),
+            body = stringResource(R.string.tip_black_body),
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        TipCard(
+            title = stringResource(R.string.tip_denim_title),
+            body = stringResource(R.string.tip_denim_body),
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    }
+}
+
+@Composable
+private fun TipCard(
+    title: String,
+    body: String,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = colorResource(R.color.laundry_surface)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text(
+                text = title,
+                color = colorResource(R.color.laundry_primary),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = body,
+                modifier = Modifier.padding(top = 8.dp),
+                color = colorResource(R.color.laundry_text),
+                fontSize = 14.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusBadge(
+    text: String,
+    @ColorRes foreground: Int,
+    @ColorRes background: Int,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = colorResource(background),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            color = colorResource(foreground),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+class LaundryGroupsController(context: Context) : AutoCloseable {
+    private val recordStore = LaundryRecordStore(context.applicationContext)
+
+    var records by mutableStateOf<List<LaundryRecordStore.StoredRecord>>(emptyList())
+        private set
+    var singleGroupDone by mutableStateOf(false)
+        private set
+    var detailsVisible by mutableStateOf(false)
+        private set
+    var pendingDelete by mutableStateOf<LaundryRecordStore.StoredRecord?>(null)
+        private set
+
+    init {
+        refresh()
+    }
+
+    fun refresh() {
+        records = recordStore.getStoredRecords()
+        singleGroupDone = recordStore.isSingleGroupDone
+    }
+
+    fun showDetails() {
+        refresh()
+        detailsVisible = records.isNotEmpty()
+    }
+
+    fun hideDetails() {
+        detailsVisible = false
+    }
+
+    fun markDone() {
+        recordStore.setSingleGroupDone(true)
+        detailsVisible = false
+        refresh()
+    }
+
+    fun requestDelete(record: LaundryRecordStore.StoredRecord) {
+        pendingDelete = record
+    }
+
+    fun clearPendingDelete() {
+        pendingDelete = null
+    }
+
+    fun deleteRecord(record: LaundryRecordStore.StoredRecord) {
+        recordStore.deleteRecord(record.id)
+        pendingDelete = null
+        refresh()
+        if (records.isEmpty()) {
+            detailsVisible = false
+        }
+    }
+
+    fun imageFile(record: LaundryRecordStore.StoredRecord): File = recordStore.getImageFile(record)
+
+    override fun close() {
+        recordStore.close()
+    }
+}
+
+@Composable
+private fun groupDetail(recordCount: Int, done: Boolean): String {
+    return stringResource(
+        R.string.group_detail_format,
+        recordCount,
+        stringResource(if (done) R.string.status_done else R.string.status_pending),
+    )
+}
+
+@Composable
+private fun displayCategory(categoryCode: String?): String {
+    val none = stringResource(R.string.group_record_none)
+    for (category in LaundryCategory.values()) {
+        if (category.recordCode == categoryCode) {
+            return category.displayName
+        }
+    }
+    return categoryCode?.takeIf { it.isNotBlank() } ?: none
+}
+
+@Composable
+private fun valueOrNone(value: String?): String {
+    return value?.takeIf { it.isNotBlank() } ?: stringResource(R.string.group_record_none)
+}
+
+@StringRes
+private fun titleFor(page: Int): Int = when (page) {
+    LaundryComposeHost.PAGE_REGISTER -> R.string.register_title
+    LaundryComposeHost.PAGE_GROUPS -> R.string.groups_title
+    LaundryComposeHost.PAGE_TIPS -> R.string.tips_title
+    else -> R.string.home_title
+}
+
+@StringRes
+private fun subtitleFor(page: Int): Int = when (page) {
+    LaundryComposeHost.PAGE_REGISTER -> R.string.register_subtitle
+    LaundryComposeHost.PAGE_GROUPS -> R.string.groups_subtitle
+    LaundryComposeHost.PAGE_TIPS -> R.string.tips_subtitle
+    else -> R.string.home_subtitle
+}
+
+private data class NavItem(
+    val page: Int,
+    val labelResId: Int,
+    val iconResId: Int,
+)
+
+private fun navItems(): List<NavItem> {
+    return listOf(
+        NavItem(LaundryComposeHost.PAGE_HOME, R.string.nav_home, android.R.drawable.ic_menu_compass),
+        NavItem(LaundryComposeHost.PAGE_REGISTER, R.string.nav_register, android.R.drawable.ic_menu_camera),
+        NavItem(LaundryComposeHost.PAGE_GROUPS, R.string.nav_groups, android.R.drawable.ic_menu_agenda),
+        NavItem(LaundryComposeHost.PAGE_TIPS, R.string.nav_tips, android.R.drawable.ic_menu_info_details),
+    )
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun HomePagePreview() {
+    LaundryTheme {
+        HomePage(
+            onRegisterClick = {},
+            onViewGroupsClick = {},
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun TipsPagePreview() {
+    LaundryTheme {
+        TipsPage()
+    }
+}
