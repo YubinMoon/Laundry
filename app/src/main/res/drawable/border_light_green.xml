@@ -2,10 +2,10 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
 
-    <!-- 안쪽은 투명 -->
+    <!-- Transparent fill -->
     <solid android:color="@android:color/transparent" />
 
-    <!-- 테두리만 연한 녹색 -->
+    <!-- Light green stroke only -->
     <stroke
         android:width="2dp"
         android:color="#A5D6A7" />

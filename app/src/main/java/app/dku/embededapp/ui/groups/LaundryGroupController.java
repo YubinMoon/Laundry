@@ -261,7 +261,7 @@ public final class LaundryGroupController implements AutoCloseable {
 
         LaundryRecord record = storedRecord.record;
         TextView title = createText(
-                displayCategory(record.category) + " · " + valueOrNone(record.color),
+                displayCategory(record.category) + " - " + valueOrNone(LaundryCategory.displayColor(record.color)),
                 R.color.laundry_text,
                 15,
                 true);

@@ -4,7 +4,7 @@ import app.dku.embededapp.data.LaundryRecord;
 
 public enum LaundryCategory {
     TOP(
-            "\uc0c1\uc758",
+            "Tops",
             LaundryRecord.CATEGORY_TOP,
             new String[] {
                     "short_sleeved_shirt",
@@ -14,7 +14,7 @@ public enum LaundryCategory {
                     "sling"
             }),
     BOTTOM(
-            "\ud558\uc758",
+            "Bottoms",
             LaundryRecord.CATEGORY_BOTTOM,
             new String[] {
                     "shorts",
@@ -22,19 +22,19 @@ public enum LaundryCategory {
                     "skirt"
             }),
     TOWEL(
-            "\uc218\uac74",
+            "Towels",
             LaundryRecord.CATEGORY_TOWEL,
             new String[] {"towel"}),
     SOCK(
-            "\uc591\ub9d0",
+            "Socks",
             LaundryRecord.CATEGORY_SOCK,
             new String[] {"sock"});
 
-    public static final String COLOR_WHITE = "\ud770\uc0c9";
-    public static final String COLOR_BLACK = "\uac80\uc740\uc0c9";
-    public static final String COLOR_BRIGHT = "\ubc1d\uc740\uc0c9";
-    public static final String COLOR_DARK = "\uc5b4\ub450\uc6b4\uc0c9";
-    public static final String COLOR_MIXED = "\ud63c\ud569";
+    public static final String COLOR_WHITE = "White";
+    public static final String COLOR_BLACK = "Black";
+    public static final String COLOR_BRIGHT = "Light";
+    public static final String COLOR_DARK = "Dark";
+    public static final String COLOR_MIXED = "Mixed";
 
     public final String displayName;
     public final String recordCode;
@@ -101,5 +101,25 @@ public enum LaundryCategory {
                 COLOR_DARK,
                 COLOR_MIXED
         };
+    }
+
+    public static String displayColor(String color) {
+        if (color == null) {
+            return null;
+        }
+        switch (color) {
+            case "\ud770\uc0c9":
+                return COLOR_WHITE;
+            case "\uac80\uc740\uc0c9":
+                return COLOR_BLACK;
+            case "\ubc1d\uc740\uc0c9":
+                return COLOR_BRIGHT;
+            case "\uc5b4\ub450\uc6b4\uc0c9":
+                return COLOR_DARK;
+            case "\ud63c\ud569":
+                return COLOR_MIXED;
+            default:
+                return color;
+        }
     }
 }
