@@ -60,5 +60,7 @@
     <string name="laundry_category_label">분류</string>
     <string name="laundry_detail_type_label">세부 타입</string>
     <string name="laundry_color_label">색상</string>
+    <string name="detected_laundry_save_success">저장되었습니다</string>
+    <string name="detected_laundry_save_failed">저장에 실패했습니다</string>
     <string name="detected_laundry_confirm">확인</string>
 </resources>

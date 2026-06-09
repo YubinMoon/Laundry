@@ -100,9 +100,11 @@ public class MainActivity extends AppCompatActivity {
     private View detectionDetailDropdownContainer;
     private MaterialButton detectionDetailDropdown;
     private MaterialButton detectionColorDropdown;
+    private MaterialButton detectionResultConfirm;
     private LifecycleCameraController cameraController;
     private ActivityResultLauncher<String> cameraPermissionLauncher;
     private ExecutorService inferenceExecutor;
+    private LaundryRecordStore laundryRecordStore;
     private LaundryDetector laundryDetector;
     private TopClassifier topClassifier;
     private BottomClassifier bottomClassifier;
@@ -115,6 +117,10 @@ public class MainActivity extends AppCompatActivity {
     private Bitmap frozenFrameBitmap;
     private Bitmap detectionCropBitmap;
     private RectF detectionCropBox;
+    private String pendingDetectedLabel;
+    private float pendingDetectedConfidence;
+    private String pendingClassificationCategoryCode;
+    private ClassificationDetail pendingClassificationDetail;
     private ValueAnimator cropModalAnimator;
 
     @Override
@@ -151,8 +157,10 @@ public class MainActivity extends AppCompatActivity {
         detectionDetailDropdownContainer = findViewById(R.id.detection_detail_group);
         detectionDetailDropdown = findViewById(R.id.detection_detail_dropdown);
         detectionColorDropdown = findViewById(R.id.detection_color_dropdown);
+        detectionResultConfirm = findViewById(R.id.detection_result_confirm);
 
         inferenceExecutor = Executors.newSingleThreadExecutor();
+        laundryRecordStore = new LaundryRecordStore(this);
         LaundryDetector loadedLaundryDetector = null;
         TopClassifier loadedTopClassifier = null;
         BottomClassifier loadedBottomClassifier = null;
@@ -220,12 +228,7 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.button_view_groups).setOnClickListener(
                 view -> bottomNavigation.setSelectedItemId(R.id.navigation_groups));
         findViewById(R.id.button_capture).setOnClickListener(view -> ensureCameraPreview());
-        findViewById(R.id.detection_result_confirm).setOnClickListener(view -> {
-            resetDetectionState();
-            if (pages[PAGE_REGISTER].getVisibility() == View.VISIBLE) {
-                startCameraPreview();
-            }
-        });
+        detectionResultConfirm.setOnClickListener(view -> saveDetectionResultAndResume());
 
         bottomNavigation.setSelectedItemId(R.id.navigation_home);
     }
@@ -247,6 +250,9 @@ public class MainActivity extends AppCompatActivity {
         }
         if (inferenceExecutor != null) {
             inferenceExecutor.shutdown();
+        }
+        if (laundryRecordStore != null) {
+            laundryRecordStore.close();
         }
         clearDetectionResultModal();
         clearFrozenFrame();
@@ -392,6 +398,11 @@ public class MainActivity extends AppCompatActivity {
             analysisEnabled = false;
             String colorType = LaundryColorAnalyzer.detectColorType(result.frameBitmap, result.normalizedBox);
             setDetectionCrop(createDetectionCrop(result.frameBitmap, result.normalizedBox));
+            setPendingDetectionRecord(
+                    result.label,
+                    result.confidence,
+                    categoryCodeForCategory(laundryCategory),
+                    analyzedDetection.classificationDetail);
             freezeFrame(result.frameBitmap);
             flashAndShowDetectedResult(laundryCategory, colorType, analyzedDetection.classificationDetail);
         } else {
@@ -551,6 +562,89 @@ public class MainActivity extends AppCompatActivity {
 
     private interface DropdownSelectionListener {
         void onSelected(String value);
+    }
+
+    private void saveDetectionResultAndResume() {
+        if (detectionCropBitmap == null || detectionCropBitmap.isRecycled() || laundryRecordStore == null) {
+            Toast.makeText(this, R.string.detected_laundry_save_failed, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        LaundryRecord record = createLaundryRecordFromModal();
+        if (record == null) {
+            Toast.makeText(this, R.string.detected_laundry_save_failed, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        detectionResultConfirm.setEnabled(false);
+        try {
+            laundryRecordStore.saveRecord(detectionCropBitmap, record);
+            Toast.makeText(this, R.string.detected_laundry_save_success, Toast.LENGTH_SHORT).show();
+            resetDetectionState();
+            if (pages[PAGE_REGISTER].getVisibility() == View.VISIBLE) {
+                startCameraPreview();
+            }
+        } catch (IOException | RuntimeException exception) {
+            detectionResultConfirm.setEnabled(true);
+            Toast.makeText(this, R.string.detected_laundry_save_failed, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private LaundryRecord createLaundryRecordFromModal() {
+        String categoryCode = selectedCategoryCode();
+        String colorType = selectedText(detectionColorDropdown);
+        if (categoryCode == null || colorType.isEmpty()) {
+            return null;
+        }
+
+        String detailType = null;
+        Float detailConfidence = null;
+        if (LaundryRecord.CATEGORY_TOP.equals(categoryCode)
+                || LaundryRecord.CATEGORY_BOTTOM.equals(categoryCode)) {
+            detailType = selectedText(detectionDetailDropdown);
+            if (detailType.isEmpty()) {
+                detailType = null;
+            }
+            if (pendingClassificationDetail != null
+                    && categoryCode.equals(pendingClassificationCategoryCode)
+                    && pendingClassificationDetail.label.equals(detailType)) {
+                detailConfidence = pendingClassificationDetail.confidence;
+            }
+        }
+
+        return new LaundryRecord(
+                categoryCode,
+                detailType,
+                colorType,
+                pendingDetectedLabel,
+                pendingDetectedConfidence,
+                detailConfidence,
+                System.currentTimeMillis());
+    }
+
+    private String selectedCategoryCode() {
+        return categoryCodeForCategory(selectedText(detectionCategoryDropdown));
+    }
+
+    private String categoryCodeForCategory(String category) {
+        if (CATEGORY_TOP.equals(category)) {
+            return LaundryRecord.CATEGORY_TOP;
+        }
+        if (CATEGORY_BOTTOM.equals(category)) {
+            return LaundryRecord.CATEGORY_BOTTOM;
+        }
+        if (CATEGORY_TOWEL.equals(category)) {
+            return LaundryRecord.CATEGORY_TOWEL;
+        }
+        if (CATEGORY_SOCK.equals(category)) {
+            return LaundryRecord.CATEGORY_SOCK;
+        }
+        return null;
+    }
+
+    private String selectedText(MaterialButton button) {
+        CharSequence text = button.getText();
+        return text == null ? "" : text.toString().trim();
     }
 
     private void animateCropIntoModal(RectF startRect, RectF endRect) {
@@ -720,9 +814,29 @@ public class MainActivity extends AppCompatActivity {
         detectionDetailDropdown.setText("");
         detectionDetailDropdownContainer.setVisibility(View.GONE);
         detectionColorDropdown.setText("");
+        detectionResultConfirm.setEnabled(true);
+        clearPendingDetectionRecord();
         recycleFrame(detectionCropBitmap);
         detectionCropBitmap = null;
         detectionCropBox = null;
+    }
+
+    private void setPendingDetectionRecord(
+            String detectedLabel,
+            float detectedConfidence,
+            String classificationCategoryCode,
+            ClassificationDetail classificationDetail) {
+        pendingDetectedLabel = detectedLabel;
+        pendingDetectedConfidence = detectedConfidence;
+        pendingClassificationCategoryCode = classificationCategoryCode;
+        pendingClassificationDetail = classificationDetail;
+    }
+
+    private void clearPendingDetectionRecord() {
+        pendingDetectedLabel = null;
+        pendingDetectedConfidence = 0f;
+        pendingClassificationCategoryCode = null;
+        pendingClassificationDetail = null;
     }
 
     private void resetLabelStreak() {
