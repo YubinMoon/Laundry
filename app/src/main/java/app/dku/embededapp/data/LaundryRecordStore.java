@@ -2,21 +2,30 @@ package app.dku.embededapp.data;
 
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 public final class LaundryRecordStore extends SQLiteOpenHelper {
+    public static final String ALL_RECORDS_GROUP_KEY = "ALL_RECORDS";
+
     private static final String DATABASE_NAME = "laundry_records.db";
     private static final int DATABASE_VERSION = 1;
     private static final String TABLE_RECORDS = "laundry_records";
     private static final String IMAGE_DIRECTORY = "detections";
     private static final int JPEG_QUALITY = 90;
+    private static final String PREFERENCES_NAME = "laundry_records_preferences";
+    private static final String KEY_DATABASE_RESET_DONE = "database_reset_done_v1";
+    private static final String KEY_SINGLE_GROUP_DONE = "groups_single_status_done";
 
     private static final String COLUMN_ID = "_id";
     private static final String COLUMN_IMAGE_PATH = "image_path";
@@ -33,6 +42,7 @@ public final class LaundryRecordStore extends SQLiteOpenHelper {
     public LaundryRecordStore(Context context) {
         super(context.getApplicationContext(), DATABASE_NAME, null, DATABASE_VERSION);
         appContext = context.getApplicationContext();
+        resetExistingDatabaseIfNeeded();
     }
 
     @Override
@@ -63,7 +73,9 @@ public final class LaundryRecordStore extends SQLiteOpenHelper {
         String relativeImagePath = IMAGE_DIRECTORY + "/" + imageFile.getName();
         try {
             writeBitmap(cropBitmap, imageFile);
-            return insertRecord(relativeImagePath, record);
+            long rowId = insertRecord(relativeImagePath, record);
+            setSingleGroupDone(false);
+            return rowId;
         } catch (IOException exception) {
             deleteQuietly(imageFile);
             throw exception;
@@ -71,6 +83,110 @@ public final class LaundryRecordStore extends SQLiteOpenHelper {
             deleteQuietly(imageFile);
             throw new IOException("Unable to save laundry record.", exception);
         }
+    }
+
+    public List<StoredRecord> getStoredRecords() {
+        List<StoredRecord> records = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().query(
+                TABLE_RECORDS,
+                new String[] {
+                        COLUMN_ID,
+                        COLUMN_IMAGE_PATH,
+                        COLUMN_CATEGORY,
+                        COLUMN_DETAIL_TYPE,
+                        COLUMN_COLOR,
+                        COLUMN_DETECTED_LABEL,
+                        COLUMN_DETECTED_CONFIDENCE,
+                        COLUMN_DETAIL_CONFIDENCE,
+                        COLUMN_CREATED_AT
+                },
+                null,
+                null,
+                null,
+                null,
+                COLUMN_CREATED_AT + " DESC, " + COLUMN_ID + " DESC")) {
+            while (cursor.moveToNext()) {
+                Float detailConfidence = null;
+                int detailConfidenceColumn = cursor.getColumnIndexOrThrow(COLUMN_DETAIL_CONFIDENCE);
+                if (!cursor.isNull(detailConfidenceColumn)) {
+                    detailConfidence = cursor.getFloat(detailConfidenceColumn);
+                }
+                LaundryRecord record = new LaundryRecord(
+                        cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_CATEGORY)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_DETAIL_TYPE)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_COLOR)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_DETECTED_LABEL)),
+                        cursor.getFloat(cursor.getColumnIndexOrThrow(COLUMN_DETECTED_CONFIDENCE)),
+                        detailConfidence,
+                        cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_CREATED_AT)));
+                records.add(new StoredRecord(
+                        cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_ID)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_IMAGE_PATH)),
+                        record));
+            }
+        }
+        return records;
+    }
+
+    public boolean deleteRecord(long recordId) {
+        String imagePath = null;
+        try (Cursor cursor = getReadableDatabase().query(
+                TABLE_RECORDS,
+                new String[] {COLUMN_IMAGE_PATH},
+                COLUMN_ID + " = ?",
+                new String[] {String.valueOf(recordId)},
+                null,
+                null,
+                null)) {
+            if (cursor.moveToFirst()) {
+                imagePath = cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_IMAGE_PATH));
+            }
+        }
+        if (imagePath == null) {
+            return false;
+        }
+
+        int deletedRows = getWritableDatabase().delete(
+                TABLE_RECORDS,
+                COLUMN_ID + " = ?",
+                new String[] {String.valueOf(recordId)});
+        if (deletedRows > 0) {
+            deleteQuietly(new File(appContext.getFilesDir(), imagePath));
+            if (getStoredRecords().isEmpty()) {
+                setSingleGroupDone(false);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    public File getImageFile(StoredRecord record) {
+        return new File(appContext.getFilesDir(), record.imagePath);
+    }
+
+    public boolean isSingleGroupDone() {
+        return preferences().getBoolean(KEY_SINGLE_GROUP_DONE, false);
+    }
+
+    public void setSingleGroupDone(boolean done) {
+        preferences().edit().putBoolean(KEY_SINGLE_GROUP_DONE, done).apply();
+    }
+
+    private void resetExistingDatabaseIfNeeded() {
+        SharedPreferences preferences = preferences();
+        if (preferences.getBoolean(KEY_DATABASE_RESET_DONE, false)) {
+            return;
+        }
+
+        File databaseFile = appContext.getDatabasePath(DATABASE_NAME);
+        if (databaseFile.exists()) {
+            appContext.deleteDatabase(DATABASE_NAME);
+            deleteRecursively(new File(appContext.getFilesDir(), IMAGE_DIRECTORY));
+        }
+        preferences.edit()
+                .putBoolean(KEY_DATABASE_RESET_DONE, true)
+                .putBoolean(KEY_SINGLE_GROUP_DONE, false)
+                .apply();
     }
 
     private void validate(Bitmap cropBitmap, LaundryRecord record) throws IOException {
@@ -123,7 +239,38 @@ public final class LaundryRecordStore extends SQLiteOpenHelper {
         }
     }
 
+    private void deleteRecursively(File file) {
+        if (file == null || !file.exists()) {
+            return;
+        }
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursively(child);
+                }
+            }
+        }
+        deleteQuietly(file);
+    }
+
+    private SharedPreferences preferences() {
+        return appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE);
+    }
+
     private boolean isEmpty(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    public static final class StoredRecord {
+        public final long id;
+        public final String imagePath;
+        public final LaundryRecord record;
+
+        public StoredRecord(long id, String imagePath, LaundryRecord record) {
+            this.id = id;
+            this.imagePath = imagePath;
+            this.record = record;
+        }
     }
 }

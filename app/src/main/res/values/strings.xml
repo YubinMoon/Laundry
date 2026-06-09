@@ -63,4 +63,20 @@
     <string name="detected_laundry_save_success">저장되었습니다</string>
     <string name="detected_laundry_save_failed">저장에 실패했습니다</string>
     <string name="detected_laundry_confirm">확인</string>
+    <string name="groups_empty_state">등록된 세탁물이 없습니다.</string>
+    <string name="group_all_records_title">전체 세탁물</string>
+    <string name="group_detail_format">총 %1$d개 · %2$s</string>
+    <string name="group_record_delete">삭제</string>
+    <string name="group_record_delete_title">기록 삭제</string>
+    <string name="group_record_delete_message">이 세탁물 기록을 삭제할까요?</string>
+    <string name="group_record_delete_cancel">취소</string>
+    <string name="group_done_button">완료</string>
+    <string name="group_done_disabled">완료됨</string>
+    <string name="group_record_category">카테고리</string>
+    <string name="group_record_color">색상</string>
+    <string name="group_record_detail_type">상세 타입</string>
+    <string name="group_record_detected_label">감지 라벨</string>
+    <string name="group_record_confidence">신뢰도</string>
+    <string name="group_record_saved_at">저장 시간</string>
+    <string name="group_record_none">없음</string>
 </resources>

@@ -26,6 +26,7 @@ import app.dku.embededapp.detection.DetectionController;
 import app.dku.embededapp.detection.StableDetection;
 import app.dku.embededapp.ui.detection.DetectionOverlayView;
 import app.dku.embededapp.ui.detection.DetectionResultController;
+import app.dku.embededapp.ui.groups.LaundryGroupController;
 import app.dku.embededapp.ui.navigation.PageNavigator;
 
 public class MainActivity extends AppCompatActivity implements DetectionController.Listener {
@@ -37,6 +38,7 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
     private ActivityResultLauncher<String> cameraPermissionLauncher;
     private DetectionController detectionController;
     private DetectionResultController detectionResultController;
+    private LaundryGroupController laundryGroupController;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,6 +48,7 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
 
         setupSystemInsets();
         setupNavigation();
+        setupGroups();
         setupCamera();
         setupDetection();
         setupBottomNavigation();
@@ -64,6 +67,9 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
         }
         if (detectionResultController != null) {
             detectionResultController.close();
+        }
+        if (laundryGroupController != null) {
+            laundryGroupController.close();
         }
         super.onDestroy();
     }
@@ -132,6 +138,12 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
                 });
     }
 
+    private void setupGroups() {
+        laundryGroupController = new LaundryGroupController(
+                this,
+                pageNavigator.getPage(PageNavigator.PAGE_GROUPS));
+    }
+
     private void setupDetection() {
         detectionOverlay = findViewById(R.id.detection_overlay);
 
@@ -151,6 +163,9 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
                 topDetailTypes,
                 bottomDetailTypes,
                 () -> {
+                    if (laundryGroupController != null) {
+                        laundryGroupController.refresh();
+                    }
                     if (isRegisterPageVisible()) {
                         startCameraPreview();
                     }
@@ -178,6 +193,7 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
                         PageNavigator.PAGE_GROUPS,
                         R.string.groups_title,
                         R.string.groups_subtitle);
+                laundryGroupController.refresh();
             } else if (itemId == R.id.navigation_tips) {
                 stopCameraPreview();
                 pageNavigator.showPage(
