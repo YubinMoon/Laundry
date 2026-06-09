@@ -8,12 +8,14 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Bundle;
+import android.view.Menu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.ImageView;
-import android.widget.TextView;
+import android.widget.PopupMenu;
 import android.widget.Toast;
+import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
 import androidx.activity.result.ActivityResultLauncher;
@@ -30,6 +32,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.button.MaterialButton;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
@@ -46,6 +49,39 @@ public class MainActivity extends AppCompatActivity {
     private static final long FLASH_HALF_DURATION_MS = 150L;
     private static final long MODAL_DELAY_AFTER_FLASH_MS = 200L;
     private static final long CROP_MODAL_ANIMATION_MS = 360L;
+    private static final String CATEGORY_TOP = "상의";
+    private static final String CATEGORY_BOTTOM = "하의";
+    private static final String CATEGORY_TOWEL = "수건";
+    private static final String CATEGORY_SOCK = "양말";
+    private static final String[] LAUNDRY_CATEGORIES = {
+            CATEGORY_TOP,
+            CATEGORY_BOTTOM,
+            CATEGORY_TOWEL,
+            CATEGORY_SOCK
+    };
+    private static final String[] COLOR_TYPES = {
+            "흰색",
+            "검은색",
+            "밝은색",
+            "어두운색",
+            "혼합"
+    };
+    private static final String[] DEFAULT_TOP_DETAIL_TYPES = {
+            "Activewear",
+            "Denim",
+            "Hoodies",
+            "Shirts",
+            "Sweaters",
+            "T-shirts"
+    };
+    private static final String[] DEFAULT_BOTTOM_DETAIL_TYPES = {
+            "Activewear",
+            "Chinos",
+            "Jeans",
+            "Joggers",
+            "Skirts",
+            "Slacks"
+    };
 
     private View[] pages;
     private View registerPage;
@@ -60,13 +96,18 @@ public class MainActivity extends AppCompatActivity {
     private View detectionResultModal;
     private ImageView detectionResultImage;
     private ImageView detectionTransitionImage;
-    private TextView detectionResultMessage;
+    private MaterialButton detectionCategoryDropdown;
+    private View detectionDetailDropdownContainer;
+    private MaterialButton detectionDetailDropdown;
+    private MaterialButton detectionColorDropdown;
     private LifecycleCameraController cameraController;
     private ActivityResultLauncher<String> cameraPermissionLauncher;
     private ExecutorService inferenceExecutor;
     private LaundryDetector laundryDetector;
     private TopClassifier topClassifier;
     private BottomClassifier bottomClassifier;
+    private String[] topDetailTypes = DEFAULT_TOP_DETAIL_TYPES;
+    private String[] bottomDetailTypes = DEFAULT_BOTTOM_DETAIL_TYPES;
     private volatile boolean analysisEnabled;
     private volatile boolean detectionLocked;
     private String lastDetectedLabel;
@@ -106,7 +147,10 @@ public class MainActivity extends AppCompatActivity {
         detectionResultModal = findViewById(R.id.detection_result_modal);
         detectionResultImage = findViewById(R.id.detection_result_image);
         detectionTransitionImage = findViewById(R.id.detection_transition_image);
-        detectionResultMessage = findViewById(R.id.detection_result_message);
+        detectionCategoryDropdown = findViewById(R.id.detection_category_dropdown);
+        detectionDetailDropdownContainer = findViewById(R.id.detection_detail_group);
+        detectionDetailDropdown = findViewById(R.id.detection_detail_dropdown);
+        detectionColorDropdown = findViewById(R.id.detection_color_dropdown);
 
         inferenceExecutor = Executors.newSingleThreadExecutor();
         LaundryDetector loadedLaundryDetector = null;
@@ -119,6 +163,8 @@ public class MainActivity extends AppCompatActivity {
             laundryDetector = loadedLaundryDetector;
             topClassifier = loadedTopClassifier;
             bottomClassifier = loadedBottomClassifier;
+            topDetailTypes = nonEmptyOrDefault(loadedTopClassifier.getLabels(), DEFAULT_TOP_DETAIL_TYPES);
+            bottomDetailTypes = nonEmptyOrDefault(loadedBottomClassifier.getLabels(), DEFAULT_BOTTOM_DETAIL_TYPES);
         } catch (IOException | RuntimeException exception) {
             if (loadedBottomClassifier != null) {
                 loadedBottomClassifier.close();
@@ -131,6 +177,7 @@ public class MainActivity extends AppCompatActivity {
             }
             Toast.makeText(this, R.string.model_load_failed, Toast.LENGTH_SHORT).show();
         }
+        setupDetectionDropdowns();
 
         cameraPreview.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         cameraController = new LifecycleCameraController(this);
@@ -286,7 +333,6 @@ public class MainActivity extends AppCompatActivity {
                     TopClassifier.Result topResult = topClassifier.classify(crop.bitmap);
                     if (topResult != null) {
                         classificationDetail = new ClassificationDetail(
-                                "상의 종류",
                                 topResult.label,
                                 topResult.confidence);
                     }
@@ -294,7 +340,6 @@ public class MainActivity extends AppCompatActivity {
                     BottomClassifier.Result bottomResult = bottomClassifier.classify(crop.bitmap);
                     if (bottomResult != null) {
                         classificationDetail = new ClassificationDetail(
-                                "하의 종류",
                                 bottomResult.label,
                                 bottomResult.confidence);
                     }
@@ -391,10 +436,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        detectionResultMessage.setText(createDetectedResultMessage(
-                laundryCategory,
-                colorType,
-                classificationDetail));
+        bindDetectionResultDropdowns(laundryCategory, colorType, classificationDetail);
         detectionResultImage.setImageBitmap(detectionCropBitmap);
         detectionResultImage.setVisibility(View.INVISIBLE);
         detectionModalScrim.setAlpha(0f);
@@ -418,6 +460,97 @@ public class MainActivity extends AppCompatActivity {
             }
             animateCropIntoModal(startRect, endRect);
         });
+    }
+
+    private void setupDetectionDropdowns() {
+        setDropdownItems(detectionCategoryDropdown, LAUNDRY_CATEGORIES, selectedCategory ->
+                updateDetailDropdownForCategory(selectedCategory, null));
+        setDropdownItems(detectionColorDropdown, COLOR_TYPES, null);
+    }
+
+    private void bindDetectionResultDropdowns(
+            String laundryCategory,
+            String colorType,
+            ClassificationDetail classificationDetail) {
+        String category = selectionOrDefault(LAUNDRY_CATEGORIES, laundryCategory);
+        String detailType = classificationDetail != null ? classificationDetail.label : null;
+        setDropdownSelection(detectionCategoryDropdown, LAUNDRY_CATEGORIES, category);
+        updateDetailDropdownForCategory(category, detailType);
+        setDropdownSelection(detectionColorDropdown, COLOR_TYPES, colorType);
+    }
+
+    private void updateDetailDropdownForCategory(String category, String preferredDetailType) {
+        String[] detailTypes = detailTypesForCategory(category);
+        if (detailTypes.length == 0) {
+            detectionDetailDropdown.setText("");
+            detectionDetailDropdownContainer.setVisibility(View.GONE);
+            return;
+        }
+
+        detectionDetailDropdownContainer.setVisibility(View.VISIBLE);
+        setDropdownItems(detectionDetailDropdown, detailTypes, null);
+        setDropdownSelection(detectionDetailDropdown, detailTypes, preferredDetailType);
+    }
+
+    private String[] detailTypesForCategory(String category) {
+        if (CATEGORY_TOP.equals(category)) {
+            return topDetailTypes;
+        }
+        if (CATEGORY_BOTTOM.equals(category)) {
+            return bottomDetailTypes;
+        }
+        return new String[0];
+    }
+
+    private void setDropdownItems(
+            MaterialButton dropdown,
+            String[] items,
+            DropdownSelectionListener selectionListener) {
+        dropdown.setOnClickListener(view -> {
+            PopupMenu popupMenu = new PopupMenu(this, dropdown);
+            Menu menu = popupMenu.getMenu();
+            for (int index = 0; index < items.length; index++) {
+                menu.add(Menu.NONE, index, index, items[index]);
+            }
+            popupMenu.setOnMenuItemClickListener(menuItem -> {
+                String selectedValue = String.valueOf(menuItem.getTitle());
+                dropdown.setText(selectedValue);
+                if (selectionListener != null) {
+                    selectionListener.onSelected(selectedValue);
+                }
+                return true;
+            });
+            popupMenu.show();
+        });
+    }
+
+    private void setDropdownSelection(
+            MaterialButton dropdown,
+            String[] items,
+            String preferredValue) {
+        dropdown.setText(selectionOrDefault(items, preferredValue));
+    }
+
+    private String selectionOrDefault(String[] items, String preferredValue) {
+        if (items.length == 0) {
+            return "";
+        }
+        if (preferredValue != null) {
+            for (String item : items) {
+                if (preferredValue.equals(item)) {
+                    return item;
+                }
+            }
+        }
+        return items[0];
+    }
+
+    private String[] nonEmptyOrDefault(String[] items, String[] defaultItems) {
+        return items.length > 0 ? items : defaultItems;
+    }
+
+    private interface DropdownSelectionListener {
+        void onSelected(String value);
     }
 
     private void animateCropIntoModal(RectF startRect, RectF endRect) {
@@ -583,6 +716,10 @@ public class MainActivity extends AppCompatActivity {
         detectionTransitionImage.setImageDrawable(null);
         detectionResultImage.setImageDrawable(null);
         detectionResultImage.setVisibility(View.VISIBLE);
+        detectionCategoryDropdown.setText("");
+        detectionDetailDropdown.setText("");
+        detectionDetailDropdownContainer.setVisibility(View.GONE);
+        detectionColorDropdown.setText("");
         recycleFrame(detectionCropBitmap);
         detectionCropBitmap = null;
         detectionCropBox = null;
@@ -612,24 +749,6 @@ public class MainActivity extends AppCompatActivity {
 
     private float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(value, max));
-    }
-
-    private String createDetectedResultMessage(
-            String laundryCategory,
-            String colorType,
-            ClassificationDetail classificationDetail) {
-        String message = getString(R.string.detected_laundry_message, laundryCategory, colorType);
-        if (classificationDetail == null) {
-            return message;
-        }
-        return message
-                + "\n"
-                + classificationDetail.type
-                + ": "
-                + classificationDetail.label
-                + " ("
-                + Math.round(classificationDetail.confidence * 100f)
-                + "%)";
     }
 
     private String formatDisplayLabel(String label, ClassificationDetail classificationDetail) {
@@ -713,12 +832,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private static final class ClassificationDetail {
-        final String type;
         final String label;
         final float confidence;
 
-        ClassificationDetail(String type, String label, float confidence) {
-            this.type = type;
+        ClassificationDetail(String label, float confidence) {
             this.label = label;
             this.confidence = confidence;
         }

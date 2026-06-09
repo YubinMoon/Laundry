@@ -94,6 +94,10 @@ final class BottomClassifier implements AutoCloseable {
         interpreter.close();
     }
 
+    String[] getLabels() {
+        return labels.toArray(new String[0]);
+    }
+
     private void fillInputBuffer(Bitmap bitmap) {
         bitmap.getPixels(pixels, 0, inputWidth, 0, 0, inputWidth, inputHeight);
         inputBuffer.rewind();
