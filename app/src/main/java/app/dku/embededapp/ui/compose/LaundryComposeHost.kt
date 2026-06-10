@@ -486,7 +486,7 @@ fun LaundryGroupsScreen(
             }
         }
 
-        if (controller.records.isEmpty()) {
+        if (controller.groups.isEmpty()) {
             Text(
                 text = stringResource(R.string.groups_empty_state),
                 modifier = Modifier
@@ -497,12 +497,13 @@ fun LaundryGroupsScreen(
                 fontSize = 14.sp,
             )
         } else {
-            GroupSummaryCard(
-                recordCount = controller.records.size,
-                done = controller.singleGroupDone,
-                onClick = controller::showDetails,
-                modifier = Modifier.padding(top = 18.dp),
-            )
+            controller.groups.forEachIndexed { index, group ->
+                GroupSummaryCard(
+                    group = group,
+                    onClick = { controller.showDetails(group) },
+                    modifier = Modifier.padding(top = if (index == 0) 18.dp else 12.dp),
+                )
+            }
         }
     }
 
@@ -519,8 +520,7 @@ fun LaundryGroupsScreen(
 
 @Composable
 private fun GroupSummaryCard(
-    recordCount: Int,
-    done: Boolean,
+    group: LaundryRecordStore.StoredGroup,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -539,22 +539,22 @@ private fun GroupSummaryCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.group_all_records_title),
+                    text = group.name,
                     color = colorResource(R.color.laundry_text),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = groupDetail(recordCount, done),
+                    text = groupDetail(group.records.size, group.done),
                     modifier = Modifier.padding(top = 6.dp),
                     color = colorResource(R.color.laundry_text_muted),
                     fontSize = 13.sp,
                 )
             }
             StatusBadge(
-                text = stringResource(if (done) R.string.status_done else R.string.status_pending),
-                foreground = if (done) R.color.laundry_success else R.color.laundry_warning,
-                background = if (done) R.color.laundry_success_background else R.color.laundry_warning_background,
+                text = stringResource(if (group.done) R.string.status_done else R.string.status_pending),
+                foreground = if (group.done) R.color.laundry_success else R.color.laundry_warning,
+                background = if (group.done) R.color.laundry_success_background else R.color.laundry_warning_background,
             )
         }
     }
@@ -562,11 +562,12 @@ private fun GroupSummaryCard(
 
 @Composable
 private fun GroupDetailsDialog(controller: LaundryGroupsController) {
+    val group = controller.selectedGroup ?: return
     AlertDialog(
         onDismissRequest = controller::hideDetails,
         title = {
             Text(
-                text = stringResource(R.string.group_all_records_title),
+                text = group.name,
                 color = colorResource(R.color.laundry_text),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
@@ -575,7 +576,7 @@ private fun GroupDetailsDialog(controller: LaundryGroupsController) {
         text = {
             Column {
                 Text(
-                    text = groupDetail(controller.records.size, controller.singleGroupDone),
+                    text = groupDetail(group.records.size, group.done),
                     color = colorResource(R.color.laundry_text_muted),
                     fontSize = 14.sp,
                 )
@@ -585,10 +586,11 @@ private fun GroupDetailsDialog(controller: LaundryGroupsController) {
                         .heightIn(max = 360.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(controller.records, key = { it.id }) { record ->
+                    items(group.records, key = { it.id }) { record ->
                         GroupRecordCard(
                             storedRecord = record,
                             imageFile = controller.imageFile(record),
+                            canDelete = !group.done,
                             onDelete = { controller.requestDelete(record) },
                         )
                     }
@@ -598,11 +600,11 @@ private fun GroupDetailsDialog(controller: LaundryGroupsController) {
         confirmButton = {
             Button(
                 onClick = controller::markDone,
-                enabled = !controller.singleGroupDone,
+                enabled = !group.done,
                 shape = RoundedCornerShape(14.dp),
                 contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
             ) {
-                Text(stringResource(if (controller.singleGroupDone) R.string.group_done_disabled else R.string.group_done_button))
+                Text(stringResource(if (group.done) R.string.group_done_disabled else R.string.group_done_button))
             }
         },
     )
@@ -612,6 +614,7 @@ private fun GroupDetailsDialog(controller: LaundryGroupsController) {
 private fun GroupRecordCard(
     storedRecord: LaundryRecordStore.StoredRecord,
     imageFile: File,
+    canDelete: Boolean,
     onDelete: () -> Unit,
 ) {
     val imageBitmap = remember(imageFile.path, imageFile.lastModified()) {
@@ -660,16 +663,18 @@ private fun GroupRecordCard(
                 InfoText(R.string.group_record_detail_type, valueOrNone(record.detailType))
                 InfoText(R.string.group_record_detected_label, valueOrNone(record.detectedLabel))
             }
-            TextButton(
-                onClick = onDelete,
-                modifier = Modifier.wrapContentWidth(),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.group_record_delete),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                )
+            if (canDelete) {
+                TextButton(
+                    onClick = onDelete,
+                    modifier = Modifier.wrapContentWidth(),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.group_record_delete),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
     }
@@ -792,9 +797,9 @@ private fun StatusBadge(
 class LaundryGroupsController(context: Context) : AutoCloseable {
     private val recordStore = LaundryRecordStore(context.applicationContext)
 
-    var records by mutableStateOf<List<LaundryRecordStore.StoredRecord>>(emptyList())
+    var groups by mutableStateOf<List<LaundryRecordStore.StoredGroup>>(emptyList())
         private set
-    var singleGroupDone by mutableStateOf(false)
+    var selectedGroup by mutableStateOf<LaundryRecordStore.StoredGroup?>(null)
         private set
     var detailsVisible by mutableStateOf(false)
         private set
@@ -806,27 +811,40 @@ class LaundryGroupsController(context: Context) : AutoCloseable {
     }
 
     fun refresh() {
-        records = recordStore.getStoredRecords()
-        singleGroupDone = recordStore.isSingleGroupDone
+        groups = recordStore.getGroups()
+        selectedGroup = selectedGroup?.let { selected ->
+            groups.firstOrNull { group -> group.id == selected.id }
+        }
+        if (selectedGroup == null) {
+            detailsVisible = false
+            pendingDelete = null
+        }
     }
 
-    fun showDetails() {
+    fun showDetails(group: LaundryRecordStore.StoredGroup) {
         refresh()
-        detailsVisible = records.isNotEmpty()
+        selectedGroup = groups.firstOrNull { it.id == group.id }
+        detailsVisible = selectedGroup != null
     }
 
     fun hideDetails() {
         detailsVisible = false
+        selectedGroup = null
     }
 
     fun markDone() {
-        recordStore.setSingleGroupDone(true)
+        selectedGroup?.let { group ->
+            recordStore.markGroupDone(group.id)
+        }
         detailsVisible = false
+        selectedGroup = null
         refresh()
     }
 
     fun requestDelete(record: LaundryRecordStore.StoredRecord) {
-        pendingDelete = record
+        if (selectedGroup?.done == false) {
+            pendingDelete = record
+        }
     }
 
     fun clearPendingDelete() {
@@ -837,9 +855,6 @@ class LaundryGroupsController(context: Context) : AutoCloseable {
         recordStore.deleteRecord(record.id)
         pendingDelete = null
         refresh()
-        if (records.isEmpty()) {
-            detailsVisible = false
-        }
     }
 
     fun imageFile(record: LaundryRecordStore.StoredRecord): File = recordStore.getImageFile(record)

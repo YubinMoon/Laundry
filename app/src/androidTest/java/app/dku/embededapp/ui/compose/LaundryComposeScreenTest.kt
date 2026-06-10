@@ -1,7 +1,9 @@
 package app.dku.embededapp.ui.compose
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
@@ -25,6 +27,6 @@ class LaundryComposeScreenTest {
         }
 
         composeRule.onNodeWithText("Add Laundry").assertIsDisplayed()
-        composeRule.onNodeWithText("1  Black Cotton T-shirts").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Black Cotton T-shirts", substring = true).assertCountEquals(2)
     }
 }
