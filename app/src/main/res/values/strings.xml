@@ -34,6 +34,7 @@
     <string name="filter_title">Filter</string>
     <string name="filter_category">Category</string>
     <string name="filter_color">Color</string>
+    <string name="filter_type">Type</string>
     <string name="filter_material">Fabric</string>
     <string name="filter_recommend">Recommended Group</string>
     <string name="group_black">Black Cotton T-shirts</string>
@@ -66,6 +67,7 @@
     <string name="groups_empty_state">No laundry has been added.</string>
     <string name="group_all_records_title">All Laundry</string>
     <string name="group_detail_format">Total %1$d items / %2$s</string>
+    <string name="group_detail_read_only_format">Total %1$d items</string>
     <string name="group_record_delete">Delete</string>
     <string name="group_record_delete_title">Delete Record</string>
     <string name="group_record_delete_message">Delete this laundry record?</string>
