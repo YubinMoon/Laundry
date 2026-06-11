@@ -33,6 +33,7 @@ public final class DetectionResultController implements AutoCloseable {
 
     private final Activity activity;
     private final View registerPage;
+    private final Runnable onResultCanceled;
     private final Runnable onRecordSaved;
     private final LaundryRecordStore laundryRecordStore;
     private final String[] topDetailTypes;
@@ -48,6 +49,7 @@ public final class DetectionResultController implements AutoCloseable {
     private final View detectionDetailDropdownContainer;
     private final MaterialButton detectionDetailDropdown;
     private final MaterialButton detectionColorDropdown;
+    private final MaterialButton detectionResultCancel;
     private final MaterialButton detectionResultConfirm;
 
     private Bitmap frozenFrameBitmap;
@@ -65,11 +67,13 @@ public final class DetectionResultController implements AutoCloseable {
             Views views,
             String[] topDetailTypes,
             String[] bottomDetailTypes,
+            Runnable onResultCanceled,
             Runnable onRecordSaved) {
         this.activity = activity;
         this.registerPage = registerPage;
         this.topDetailTypes = topDetailTypes.clone();
         this.bottomDetailTypes = bottomDetailTypes.clone();
+        this.onResultCanceled = onResultCanceled;
         this.onRecordSaved = onRecordSaved;
         laundryRecordStore = new LaundryRecordStore(activity);
 
@@ -83,9 +87,11 @@ public final class DetectionResultController implements AutoCloseable {
         detectionDetailDropdownContainer = views.detectionDetailDropdownContainer;
         detectionDetailDropdown = views.detectionDetailDropdown;
         detectionColorDropdown = views.detectionColorDropdown;
+        detectionResultCancel = views.detectionResultCancel;
         detectionResultConfirm = views.detectionResultConfirm;
 
         setupDetectionDropdowns();
+        detectionResultCancel.setOnClickListener(view -> cancelDetectionResultAndResume());
         detectionResultConfirm.setOnClickListener(view -> saveDetectionResultAndResume());
     }
 
@@ -100,6 +106,7 @@ public final class DetectionResultController implements AutoCloseable {
         public final View detectionDetailDropdownContainer;
         public final MaterialButton detectionDetailDropdown;
         public final MaterialButton detectionColorDropdown;
+        public final MaterialButton detectionResultCancel;
         public final MaterialButton detectionResultConfirm;
 
         public Views(
@@ -113,6 +120,7 @@ public final class DetectionResultController implements AutoCloseable {
                 View detectionDetailDropdownContainer,
                 MaterialButton detectionDetailDropdown,
                 MaterialButton detectionColorDropdown,
+                MaterialButton detectionResultCancel,
                 MaterialButton detectionResultConfirm) {
             this.frozenFrame = frozenFrame;
             this.cameraFlash = cameraFlash;
@@ -124,6 +132,7 @@ public final class DetectionResultController implements AutoCloseable {
             this.detectionDetailDropdownContainer = detectionDetailDropdownContainer;
             this.detectionDetailDropdown = detectionDetailDropdown;
             this.detectionColorDropdown = detectionColorDropdown;
+            this.detectionResultCancel = detectionResultCancel;
             this.detectionResultConfirm = detectionResultConfirm;
         }
     }
@@ -319,6 +328,11 @@ public final class DetectionResultController implements AutoCloseable {
             detectionResultConfirm.setEnabled(true);
             Toast.makeText(activity, R.string.detected_laundry_save_failed, Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void cancelDetectionResultAndResume() {
+        clear();
+        onResultCanceled.run();
     }
 
     private LaundryRecord createLaundryRecordFromModal() {

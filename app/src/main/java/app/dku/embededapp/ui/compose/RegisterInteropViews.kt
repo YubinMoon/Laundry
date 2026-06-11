@@ -43,6 +43,7 @@ class RegisterInteropViews(context: Context) {
             builder.detectionDetailGroup,
             builder.detectionDetailDropdown,
             builder.detectionColorDropdown,
+            builder.detectionResultCancel,
             builder.detectionResultConfirm,
         )
     }
@@ -104,6 +105,7 @@ private class RegisterLayoutBuilder(private val context: Context) {
     }
     val detectionDetailDropdown = dropdownButton()
     val detectionColorDropdown = dropdownButton()
+    val detectionResultCancel = closeButton()
     val detectionResultConfirm = primaryButton(R.string.detected_laundry_confirm).apply {
         minHeight = 0
         insetTop = 0
@@ -210,12 +212,7 @@ private class RegisterLayoutBuilder(private val context: Context) {
                 gravity = Gravity.CENTER_HORIZONTAL
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(20), dp(18), dp(20), dp(16))
-                addView(TextView(context).apply {
-                    setText(R.string.detected_laundry_title)
-                    setTextColor(color(R.color.laundry_text))
-                    textSize = 22f
-                    setTypeface(typeface, android.graphics.Typeface.BOLD)
-                }, linearParams(match = true))
+                addView(createDetectionModalTitle(), linearParams(match = true))
                 addView(detectionResultImage, linearParams(width = dp(112), height = dp(112), top = dp(14)))
                 addView(labeledDropdown(R.string.laundry_category_label, detectionCategoryDropdown), linearParams(match = true, top = dp(14)))
                 addView(labeledDropdown(R.string.laundry_detail_type_label, detectionDetailDropdown, detectionDetailGroup), linearParams(match = true, top = dp(8)))
@@ -225,6 +222,20 @@ private class RegisterLayoutBuilder(private val context: Context) {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ))
+        }
+    }
+
+    private fun createDetectionModalTitle(): View {
+        return LinearLayout(context).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            addView(TextView(context).apply {
+                setText(R.string.detected_laundry_title)
+                setTextColor(color(R.color.laundry_text))
+                textSize = 22f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(detectionResultCancel, linearParams(width = dp(40), height = dp(40)))
         }
     }
 
@@ -268,6 +279,26 @@ private class RegisterLayoutBuilder(private val context: Context) {
             setTextColor(color(R.color.white))
             backgroundTintList = ColorStateList.valueOf(color(R.color.laundry_primary))
             cornerRadius = dp(16)
+        }
+    }
+
+    private fun closeButton(): MaterialButton {
+        return MaterialButton(context).apply {
+            contentDescription = context.getString(R.string.detected_laundry_cancel)
+            icon = ContextCompat.getDrawable(context, R.drawable.ic_close)
+            iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+            iconPadding = 0
+            iconSize = dp(20)
+            iconTint = ColorStateList.valueOf(color(R.color.laundry_text_muted))
+            minWidth = 0
+            minimumWidth = 0
+            minHeight = 0
+            minimumHeight = 0
+            insetTop = 0
+            insetBottom = 0
+            setPadding(0, 0, 0, 0)
+            backgroundTintList = ColorStateList.valueOf(color(R.color.laundry_surface))
+            cornerRadius = dp(20)
         }
     }
 

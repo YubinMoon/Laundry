@@ -67,6 +67,7 @@
     <string name="laundry_color_label">Color</string>
     <string name="detected_laundry_save_success">Saved</string>
     <string name="detected_laundry_save_failed">Could not save</string>
+    <string name="detected_laundry_cancel">Cancel detected laundry</string>
     <string name="detected_laundry_confirm">Save</string>
     <string name="groups_empty_state">No laundry has been added.</string>
     <string name="group_all_records_title">All Laundry</string>
