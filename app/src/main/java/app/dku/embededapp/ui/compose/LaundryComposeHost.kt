@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -478,7 +479,7 @@ private fun RecommendedOrderCard(
                     Text(
                         text = stringResource(
                             R.string.recommend_detail_format,
-                            stringResource(R.string.summary_count_items, recommendation.itemCount),
+                            formatItemCount(recommendation.itemCount),
                             formatNotWashedAge(recommendation.notWashedDays),
                         ),
                         modifier = Modifier.padding(top = 4.dp),
@@ -498,9 +499,14 @@ private fun priorityReason(recommendation: LaundryHomeRecommendation?): String {
     }
     return stringResource(
         R.string.priority_reason_format,
-        stringResource(R.string.summary_count_items, recommendation.itemCount),
+        formatItemCount(recommendation.itemCount),
         formatNotWashedAge(recommendation.notWashedDays),
     )
+}
+
+@Composable
+private fun formatItemCount(count: Int): String {
+    return pluralStringResource(R.plurals.summary_count_items, count, count)
 }
 
 @Composable
@@ -508,8 +514,7 @@ private fun formatNotWashedAge(days: Long?): String {
     return when (days) {
         null -> stringResource(R.string.not_washed_none)
         0L -> stringResource(R.string.not_washed_today)
-        1L -> stringResource(R.string.not_washed_one_day)
-        else -> stringResource(R.string.not_washed_days, days)
+        else -> pluralStringResource(R.plurals.not_washed_days, days.toInt(), days)
     }
 }
 
@@ -1160,12 +1165,14 @@ data class LaundryDisplayGroup(
 
 @Composable
 private fun groupDetail(group: LaundryDisplayGroup): String {
+    val itemCount = group.records.size
     if (group.readOnly) {
-        return stringResource(R.string.group_detail_read_only_format, group.records.size)
+        return pluralStringResource(R.plurals.group_detail_read_only_format, itemCount, itemCount)
     }
-    return stringResource(
-        R.string.group_detail_format,
-        group.records.size,
+    return pluralStringResource(
+        R.plurals.group_detail_format,
+        itemCount,
+        itemCount,
         stringResource(if (group.done) R.string.status_done else R.string.status_pending),
     )
 }

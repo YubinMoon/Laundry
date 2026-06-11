@@ -25,11 +25,16 @@
     <string name="summary_pending_groups">Pending Groups</string>
     <string name="summary_done_groups">Done Groups</string>
     <string name="summary_items_saved">items saved</string>
-    <string name="summary_count_items">%1$d items</string>
+    <plurals name="summary_count_items">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
     <string name="not_washed_none">None</string>
     <string name="not_washed_today">Today</string>
-    <string name="not_washed_one_day">1 day</string>
-    <string name="not_washed_days">%1$d days</string>
+    <plurals name="not_washed_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
     <string name="recommend_title">Recommended Order</string>
     <string name="recommend_empty_state">No pending laundry groups.</string>
     <string name="recommend_item_format">%1$d  %2$s</string>
@@ -61,8 +66,14 @@
     <string name="detected_laundry_cancel">Cancel detected laundry</string>
     <string name="detected_laundry_confirm">Save</string>
     <string name="groups_empty_state">No laundry has been added.</string>
-    <string name="group_detail_format">Total %1$d items / %2$s</string>
-    <string name="group_detail_read_only_format">Total %1$d items</string>
+    <plurals name="group_detail_format">
+        <item quantity="one">Total %1$d item / %2$s</item>
+        <item quantity="other">Total %1$d items / %2$s</item>
+    </plurals>
+    <plurals name="group_detail_read_only_format">
+        <item quantity="one">Total %1$d item</item>
+        <item quantity="other">Total %1$d items</item>
+    </plurals>
     <string name="group_record_delete">Delete</string>
     <string name="group_record_delete_title">Delete Record</string>
     <string name="group_record_delete_message">Delete this laundry record?</string>

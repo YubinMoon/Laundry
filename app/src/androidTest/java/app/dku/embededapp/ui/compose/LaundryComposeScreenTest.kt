@@ -167,7 +167,7 @@ class LaundryComposeScreenTest {
         composeRule.onNodeWithText("Category").assertDoesNotExist()
         composeRule.onNodeWithText("Fabric").assertDoesNotExist()
         composeRule.onNodeWithText("Light General Clothes").assertIsDisplayed()
-        composeRule.onNodeWithText("Total 1 items / Pending").assertIsDisplayed()
+        composeRule.onNodeWithText("Total 1 item / Pending").assertIsDisplayed()
         composeRule.onNodeWithText("Pending").assertIsDisplayed()
     }
 
@@ -181,7 +181,7 @@ class LaundryComposeScreenTest {
 
         composeRule.onNodeWithText("White").assertIsDisplayed()
         composeRule.onNodeWithText("Black").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Total 1 items").assertCountEquals(2)
+        composeRule.onAllNodesWithText("Total 1 item").assertCountEquals(2)
         composeRule.onNodeWithText("Pending").assertDoesNotExist()
 
         composeRule.onNodeWithText("White").performClick()
