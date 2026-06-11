@@ -6,7 +6,7 @@
     <string name="register_title">Add Laundry</string>
     <string name="register_subtitle">Capture, classify, and save</string>
     <string name="groups_title">Laundry Groups</string>
-    <string name="groups_subtitle">Sort by color and fabric</string>
+    <string name="groups_subtitle">Browse recommended, type, and color groups</string>
     <string name="tips_title">Laundry Tips</string>
     <string name="tips_subtitle">Recommended care by group</string>
     <string name="nav_home">Home</string>
