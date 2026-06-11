@@ -1,0 +1,131 @@
+name: Release APK
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.0.2
+        required: true
+        type: string
+      title:
+        description: Release title. Defaults to the tag.
+        required: false
+        type: string
+      notes:
+        description: Release notes.
+        required: true
+        type: string
+      prerelease:
+        description: Mark as prerelease.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            tag="${{ github.event.release.tag_name }}"
+            title="${{ github.event.release.name }}"
+          else
+            tag="${{ inputs.tag }}"
+            title="${{ inputs.title }}"
+          fi
+
+          if [[ -z "$title" ]]; then
+            title="$tag"
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+          echo "apk_name=LaundryMate-$tag.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Restore release signing files
+        shell: bash
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$RELEASE_KEYSTORE_BASE64"
+          test -n "$RELEASE_STORE_PASSWORD"
+          test -n "$RELEASE_KEY_ALIAS"
+          test -n "$RELEASE_KEY_PASSWORD"
+
+          mkdir -p signing
+          printf "%s" "$RELEASE_KEYSTORE_BASE64" | base64 --decode > signing/release-keystore.jks
+          {
+            echo "storeFile=signing/release-keystore.jks"
+            echo "storePassword=$RELEASE_STORE_PASSWORD"
+            echo "keyAlias=$RELEASE_KEY_ALIAS"
+            echo "keyPassword=$RELEASE_KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Build signed release APK
+        run: ./gradlew :app:assembleRelease --no-parallel
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          "$apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+
+      - name: Prepare APK asset
+        shell: bash
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk \
+            "app/build/outputs/apk/release/${{ steps.release.outputs.apk_name }}"
+
+      - name: Create release from Actions
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+          IS_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          prerelease_flag=""
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          gh release create "${{ steps.release.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            --title "${{ steps.release.outputs.title }}" \
+            --notes "$RELEASE_NOTES" \
+            $prerelease_flag
+
+      - name: Upload APK to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ steps.release.outputs.tag }}" \
+            "app/build/outputs/apk/release/${{ steps.release.outputs.apk_name }}" \
+            --clobber
