@@ -123,7 +123,7 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
                 bottomDetailTypes,
                 () -> {
                     if (uiHandles != null) {
-                        uiHandles.refreshGroups();
+                        uiHandles.refreshLaundryData();
                     }
                     if (isRegisterPageVisible()) {
                         startCameraPreview();

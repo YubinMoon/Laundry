@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -65,11 +66,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import java.io.File
 import app.dku.embededapp.R
 import app.dku.embededapp.data.LaundryRecord
 import app.dku.embededapp.data.LaundryRecordStore
 import app.dku.embededapp.detection.LaundryCategory
+import java.io.File
+import java.util.Calendar
+import java.util.concurrent.TimeUnit
 
 object LaundryComposeHost {
     const val PAGE_HOME = 0
@@ -88,14 +91,16 @@ object LaundryComposeHost {
     fun install(activity: ComponentActivity, callbacks: Callbacks): Handles {
         val selectedPage = mutableIntStateOf(PAGE_HOME)
         val registerViews = RegisterInteropViews(activity)
+        val homeController = LaundryHomeController(activity)
         val groupsController = LaundryGroupsController(activity)
-        val handles = Handles(selectedPage, registerViews, groupsController)
+        val handles = Handles(selectedPage, registerViews, homeController, groupsController)
 
         activity.setContent {
             LaundryTheme {
                 LaundryApp(
                     selectedPage = selectedPage.intValue,
                     registerViews = registerViews,
+                    homeController = homeController,
                     groupsController = groupsController,
                     callbacks = callbacks,
                 )
@@ -108,11 +113,15 @@ object LaundryComposeHost {
     class Handles internal constructor(
         private val selectedPage: androidx.compose.runtime.MutableIntState,
         private val registerViews: RegisterInteropViews,
+        private val homeController: LaundryHomeController,
         private val groupsController: LaundryGroupsController,
     ) : AutoCloseable {
         fun showPage(page: Int) {
             selectedPage.intValue = page
             registerViews.root.visibility = if (page == PAGE_REGISTER) View.VISIBLE else View.GONE
+            if (page == PAGE_HOME) {
+                homeController.refresh()
+            }
             if (page == PAGE_GROUPS) {
                 groupsController.refresh()
             }
@@ -132,7 +141,13 @@ object LaundryComposeHost {
             groupsController.refresh()
         }
 
+        fun refreshLaundryData() {
+            homeController.refresh()
+            groupsController.refresh()
+        }
+
         override fun close() {
+            homeController.close()
             groupsController.close()
         }
     }
@@ -142,6 +157,7 @@ object LaundryComposeHost {
 fun LaundryApp(
     selectedPage: Int,
     registerViews: RegisterInteropViews,
+    homeController: LaundryHomeController,
     groupsController: LaundryGroupsController,
     callbacks: LaundryComposeHost.Callbacks,
 ) {
@@ -176,6 +192,7 @@ fun LaundryApp(
                     LaundryComposeHost.PAGE_GROUPS -> LaundryGroupsScreen(groupsController)
                     LaundryComposeHost.PAGE_TIPS -> TipsPage()
                     else -> HomePage(
+                        state = homeController.state,
                         onRegisterClick = callbacks::onStartRegisterClicked,
                         onViewGroupsClick = callbacks::onViewGroupsClicked,
                     )
@@ -245,6 +262,7 @@ private fun LaundryNavigationBar(
 
 @Composable
 fun HomePage(
+    state: LaundryHomeState,
     onRegisterClick: () -> Unit,
     onViewGroupsClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -255,7 +273,10 @@ fun HomePage(
             .verticalScroll(rememberScrollState())
             .padding(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 22.dp),
     ) {
-        PriorityCard(onRegisterClick = onRegisterClick)
+        PriorityCard(
+            recommendation = state.priorityRecommendation,
+            onRegisterClick = onRegisterClick,
+        )
         Text(
             text = stringResource(R.string.summary_title),
             modifier = Modifier.padding(top = 25.dp),
@@ -263,29 +284,10 @@ fun HomePage(
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            SummaryCard(
-                label = stringResource(R.string.active_laundry),
-                value = stringResource(R.string.active_value),
-                badge = stringResource(R.string.status_active),
-                modifier = Modifier.weight(1f),
-            )
-            SummaryCard(
-                label = stringResource(R.string.remaining_groups),
-                value = stringResource(R.string.remaining_value),
-                modifier = Modifier.weight(1f),
-            )
-            SummaryCard(
-                label = stringResource(R.string.next_laundry),
-                value = stringResource(R.string.next_value),
-                modifier = Modifier.weight(1f),
-            )
-        }
+        SummaryStatsCard(
+            summary = state.summary,
+            modifier = Modifier.padding(top = 12.dp),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -303,38 +305,15 @@ fun HomePage(
                 Text(stringResource(R.string.view_all))
             }
         }
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = colorResource(R.color.laundry_surface)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        ) {
-            Column(modifier = Modifier.padding(17.dp)) {
-                Text(
-                    text = stringResource(R.string.recommend_first),
-                    color = colorResource(R.color.laundry_text),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = stringResource(R.string.recommend_second),
-                    modifier = Modifier.padding(top = 17.dp),
-                    color = colorResource(R.color.laundry_text),
-                    fontSize = 15.sp,
-                )
-                Text(
-                    text = stringResource(R.string.recommend_third),
-                    modifier = Modifier.padding(top = 17.dp),
-                    color = colorResource(R.color.laundry_text),
-                    fontSize = 15.sp,
-                )
-            }
-        }
+        RecommendedOrderCard(recommendations = state.recommendations)
     }
 }
 
 @Composable
-private fun PriorityCard(onRegisterClick: () -> Unit) {
+private fun PriorityCard(
+    recommendation: LaundryHomeRecommendation?,
+    onRegisterClick: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(26.dp),
@@ -343,19 +322,19 @@ private fun PriorityCard(onRegisterClick: () -> Unit) {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             StatusBadge(
-                text = stringResource(R.string.priority_badge),
+                text = stringResource(if (recommendation == null) R.string.priority_empty_badge else R.string.priority_badge),
                 foreground = R.color.laundry_success,
                 background = R.color.laundry_success_background,
             )
             Text(
-                text = stringResource(R.string.priority_group),
+                text = recommendation?.name ?: stringResource(R.string.priority_empty_title),
                 modifier = Modifier.padding(top = 17.dp),
                 color = colorResource(R.color.white),
                 fontSize = 23.sp,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = stringResource(R.string.priority_reason),
+                text = priorityReason(recommendation),
                 modifier = Modifier.padding(top = 6.dp),
                 color = colorResource(R.color.white).copy(alpha = 0.85f),
                 fontSize = 14.sp,
@@ -378,48 +357,159 @@ private fun PriorityCard(onRegisterClick: () -> Unit) {
 }
 
 @Composable
-private fun SummaryCard(
-    label: String,
-    value: String,
+private fun SummaryStatsCard(
+    summary: LaundryHomeSummary,
     modifier: Modifier = Modifier,
-    badge: String? = null,
 ) {
     Card(
-        modifier = modifier.height(115.dp),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = colorResource(R.color.laundry_surface)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = label,
-                color = colorResource(R.color.laundry_text_muted),
-                fontSize = 12.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.summary_total_laundry),
+                    color = colorResource(R.color.laundry_text_muted),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = summary.totalLaundryCount.toString(),
+                    modifier = Modifier.padding(top = 6.dp),
+                    color = colorResource(R.color.laundry_primary),
+                    fontSize = 46.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+                Text(
+                    text = stringResource(R.string.summary_items_saved),
+                    color = colorResource(R.color.laundry_text_muted),
+                    fontSize = 13.sp,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .height(82.dp)
+                    .width(1.dp)
+                    .background(colorResource(R.color.laundry_line)),
             )
-            Text(
-                text = value,
-                modifier = Modifier.padding(top = 12.dp),
-                color = colorResource(R.color.laundry_text),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (badge != null) {
-                StatusBadge(
-                    text = badge,
-                    foreground = R.color.laundry_warning,
-                    background = R.color.laundry_warning_background,
-                    modifier = Modifier.padding(top = 7.dp),
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                SummaryGroupMetric(
+                    label = stringResource(R.string.summary_pending_groups),
+                    value = summary.pendingGroupCount,
+                )
+                SummaryGroupMetric(
+                    label = stringResource(R.string.summary_done_groups),
+                    value = summary.doneGroupCount,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SummaryGroupMetric(
+    label: String,
+    value: Int,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            color = colorResource(R.color.laundry_text_muted),
+            fontSize = 12.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = value.toString(),
+            modifier = Modifier.padding(start = 8.dp),
+            color = colorResource(R.color.laundry_text),
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun RecommendedOrderCard(
+    recommendations: List<LaundryHomeRecommendation>,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = colorResource(R.color.laundry_surface)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(modifier = Modifier.padding(17.dp)) {
+            if (recommendations.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.recommend_empty_state),
+                    color = colorResource(R.color.laundry_text_muted),
+                    fontSize = 14.sp,
+                )
+            } else {
+                recommendations.forEachIndexed { index, recommendation ->
+                    Text(
+                        text = stringResource(R.string.recommend_item_format, index + 1, recommendation.name),
+                        modifier = Modifier.padding(top = if (index == 0) 0.dp else 17.dp),
+                        color = colorResource(R.color.laundry_text),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.recommend_detail_format,
+                            stringResource(R.string.summary_count_items, recommendation.itemCount),
+                            formatNotWashedAge(recommendation.notWashedDays),
+                        ),
+                        modifier = Modifier.padding(top = 4.dp),
+                        color = colorResource(R.color.laundry_text_muted),
+                        fontSize = 13.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun priorityReason(recommendation: LaundryHomeRecommendation?): String {
+    if (recommendation == null) {
+        return stringResource(R.string.priority_empty_reason)
+    }
+    return stringResource(
+        R.string.priority_reason_format,
+        stringResource(R.string.summary_count_items, recommendation.itemCount),
+        formatNotWashedAge(recommendation.notWashedDays),
+    )
+}
+
+@Composable
+private fun formatNotWashedAge(days: Long?): String {
+    return when (days) {
+        null -> stringResource(R.string.not_washed_none)
+        0L -> stringResource(R.string.not_washed_today)
+        1L -> stringResource(R.string.not_washed_one_day)
+        else -> stringResource(R.string.not_washed_days, days)
     }
 }
 
@@ -789,6 +879,114 @@ private fun StatusBadge(
     }
 }
 
+class LaundryHomeController(
+    context: Context,
+    private val currentTimeMillis: () -> Long = System::currentTimeMillis,
+) : AutoCloseable {
+    private val recordStore = LaundryRecordStore(context.applicationContext)
+
+    var state by mutableStateOf(LaundryHomeState())
+        private set
+
+    init {
+        refresh()
+    }
+
+    fun refresh() {
+        val now = currentTimeMillis()
+        val groups = recordStore.getGroups()
+        val records = recordStore.getStoredRecords()
+        val pendingGroups = groups.filter { group -> !group.done }
+        val pendingRecords = pendingGroups.flatMap { group -> group.records }
+        val oldestNotWashedDays = pendingRecords
+            .minOfOrNull { record -> record.record.createdAt }
+            ?.let { createdAt -> daysSince(createdAt, now) }
+
+        val recommendations = pendingGroups
+            .mapNotNull { group -> group.toRecommendation(now) }
+            .sortedWith(
+                compareByDescending<LaundryHomeRecommendation> { recommendation -> recommendation.score }
+                    .thenBy { recommendation -> recommendation.oldestCreatedAt }
+                    .thenByDescending { recommendation -> recommendation.itemCount }
+                    .thenBy { recommendation -> recommendation.name.lowercase() },
+            )
+            .take(MAX_HOME_RECOMMENDATIONS)
+
+        state = LaundryHomeState(
+            summary = LaundryHomeSummary(
+                totalLaundryCount = records.size,
+                pendingLaundryCount = pendingRecords.size,
+                totalGroupCount = groups.size,
+                pendingGroupCount = pendingGroups.size,
+                doneGroupCount = groups.count { group -> group.done },
+                oldestNotWashedDays = oldestNotWashedDays,
+            ),
+            recommendations = recommendations,
+        )
+    }
+
+    override fun close() {
+        recordStore.close()
+    }
+
+    private fun LaundryRecordStore.StoredGroup.toRecommendation(now: Long): LaundryHomeRecommendation? {
+        val oldestCreatedAt = records.minOfOrNull { record -> record.record.createdAt } ?: return null
+        return LaundryHomeRecommendation(
+            name = name,
+            itemCount = records.size,
+            oldestCreatedAt = oldestCreatedAt,
+            notWashedDays = daysSince(oldestCreatedAt, now),
+        )
+    }
+
+    private fun daysSince(createdAt: Long, now: Long): Long {
+        val createdDayStart = startOfDay(createdAt)
+        val nowDayStart = startOfDay(now)
+        return TimeUnit.MILLISECONDS.toDays((nowDayStart - createdDayStart).coerceAtLeast(0L))
+    }
+
+    private fun startOfDay(timeMillis: Long): Long {
+        return Calendar.getInstance().apply {
+            timeInMillis = timeMillis
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+
+    private companion object {
+        const val MAX_HOME_RECOMMENDATIONS = 3
+    }
+}
+
+data class LaundryHomeState(
+    val summary: LaundryHomeSummary = LaundryHomeSummary(),
+    val recommendations: List<LaundryHomeRecommendation> = emptyList(),
+) {
+    val priorityRecommendation: LaundryHomeRecommendation?
+        get() = recommendations.firstOrNull()
+}
+
+data class LaundryHomeSummary(
+    val totalLaundryCount: Int = 0,
+    val pendingLaundryCount: Int = 0,
+    val totalGroupCount: Int = 0,
+    val pendingGroupCount: Int = 0,
+    val doneGroupCount: Int = 0,
+    val oldestNotWashedDays: Long? = null,
+)
+
+data class LaundryHomeRecommendation(
+    val name: String,
+    val itemCount: Int,
+    val oldestCreatedAt: Long,
+    val notWashedDays: Long,
+) {
+    val score: Long
+        get() = itemCount.toLong() * (notWashedDays + 1L)
+}
+
 class LaundryGroupsController(context: Context) : AutoCloseable {
     private val recordStore = LaundryRecordStore(context.applicationContext)
 
@@ -1024,6 +1222,7 @@ private fun navItems(): List<NavItem> {
 private fun HomePagePreview() {
     LaundryTheme {
         HomePage(
+            state = LaundryHomeState(),
             onRegisterClick = {},
             onViewGroupsClick = {},
         )
