@@ -351,16 +351,14 @@ public final class LaundryRecordStore extends SQLiteOpenHelper {
     }
 
     private String groupNameFor(LaundryRecord record) {
-        if (LaundryRecord.CATEGORY_TOWEL.equals(record.category)
-                || matches(record.detectedLabel, "towel")) {
+        if (LaundryRecord.CATEGORY_TOWEL.equals(record.category)) {
             return GROUP_TOWELS;
         }
         if (matches(record.detailType, "Activewear")) {
             return GROUP_ACTIVEWEAR;
         }
         if (matches(record.detailType, "Sweaters")
-                || matches(record.detailType, "Skirts")
-                || matches(record.detectedLabel, "skirt")) {
+                || matches(record.detailType, "Skirts")) {
             return GROUP_DELICATES;
         }
         if (matches(record.detailType, "Denim") || matches(record.detailType, "Jeans")) {

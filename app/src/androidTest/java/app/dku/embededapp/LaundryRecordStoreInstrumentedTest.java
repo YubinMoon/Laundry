@@ -190,6 +190,64 @@ public class LaundryRecordStoreInstrumentedTest {
     }
 
     @Test
+    public void saveRecordUsesConfirmedFieldsWhenDetectedLabelWasTowel() throws Exception {
+        assertSavedGroupName(createRecord(
+                LaundryRecord.CATEGORY_TOP,
+                "T-shirts",
+                "White",
+                "towel",
+                1000L), "Light General Clothes");
+    }
+
+    @Test
+    public void saveRecordUsesConfirmedFieldsWhenDetectedLabelWasSkirt() throws Exception {
+        assertSavedGroupName(createRecord(
+                LaundryRecord.CATEGORY_TOP,
+                "T-shirts",
+                "Black",
+                "skirt",
+                1000L), "Dark General Clothes");
+    }
+
+    @Test
+    public void saveRecordKeepsConfirmedTowelsInTowelsGroup() throws Exception {
+        assertSavedGroupName(createRecord(
+                LaundryRecord.CATEGORY_TOWEL,
+                null,
+                "White",
+                "short_sleeved_shirt",
+                1000L), "Towels");
+    }
+
+    @Test
+    public void saveRecordKeepsConfirmedSkirtsInDelicatesGroup() throws Exception {
+        assertSavedGroupName(createRecord(
+                LaundryRecord.CATEGORY_BOTTOM,
+                "Skirts",
+                "Black",
+                "trousers",
+                1000L), "Delicates");
+    }
+
+    private void assertSavedGroupName(LaundryRecord record, String expectedGroupName) throws Exception {
+        Bitmap bitmap = Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888);
+        bitmap.eraseColor(Color.WHITE);
+
+        LaundryRecordStore store = new LaundryRecordStore(context);
+        try {
+            store.saveRecord(bitmap, record);
+
+            List<LaundryRecordStore.StoredGroup> groups = store.getGroups();
+
+            assertEquals(1, groups.size());
+            assertEquals(expectedGroupName, groups.get(0).name);
+        } finally {
+            store.close();
+            bitmap.recycle();
+        }
+    }
+
+    @Test
     public void deleteRecordRemovesDatabaseRowImageFileAndEmptyOpenGroup() throws Exception {
         Bitmap bitmap = Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888);
         bitmap.eraseColor(Color.GREEN);
