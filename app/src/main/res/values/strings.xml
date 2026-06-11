@@ -37,20 +37,11 @@
     <string name="scan_description">Keep laundry inside the frame.</string>
     <string name="capture">Start Camera</string>
     <string name="filter_title">Filter</string>
-    <string name="filter_category">Category</string>
     <string name="filter_color">Color</string>
     <string name="filter_type">Type</string>
-    <string name="filter_material">Fabric</string>
     <string name="filter_recommend">Recommended Group</string>
-    <string name="group_black">Black Cotton T-shirts</string>
-    <string name="group_black_detail">Tops / Black / Cotton / 8 items</string>
-    <string name="group_towel">White Towels</string>
-    <string name="group_towel_detail">Towels / White / Cotton / 6 items</string>
-    <string name="group_denim">Denim Bottoms</string>
-    <string name="group_denim_detail">Bottoms / Blue / Denim / 2 items</string>
     <string name="status_pending">Pending</string>
     <string name="status_done">Done</string>
-    <string name="edit_or_delete">Edit / Delete</string>
     <string name="tip_header">Laundry Tips by Group</string>
     <string name="tip_towel_title">Towels</string>
     <string name="tip_towel_body">Skip fabric softener to keep towels absorbent longer.</string>
@@ -70,7 +61,6 @@
     <string name="detected_laundry_cancel">Cancel detected laundry</string>
     <string name="detected_laundry_confirm">Save</string>
     <string name="groups_empty_state">No laundry has been added.</string>
-    <string name="group_all_records_title">All Laundry</string>
     <string name="group_detail_format">Total %1$d items / %2$s</string>
     <string name="group_detail_read_only_format">Total %1$d items</string>
     <string name="group_record_delete">Delete</string>
@@ -79,11 +69,7 @@
     <string name="group_record_delete_cancel">Cancel</string>
     <string name="group_done_button">Done</string>
     <string name="group_done_disabled">Done</string>
-    <string name="group_record_category">Category</string>
-    <string name="group_record_color">Color</string>
     <string name="group_record_detail_type">Detail Type</string>
     <string name="group_record_detected_label">Detected Label</string>
-    <string name="group_record_confidence">Confidence</string>
-    <string name="group_record_saved_at">Saved At</string>
     <string name="group_record_none">None</string>
 </resources>
