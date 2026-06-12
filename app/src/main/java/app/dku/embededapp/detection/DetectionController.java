@@ -18,7 +18,7 @@ import app.dku.embededapp.ml.TopClassifier;
 
 public final class DetectionController implements AutoCloseable {
     private static final float DETECTION_CONFIDENCE_THRESHOLD = 0.40f;
-    private static final int REQUIRED_STABLE_LABEL_COUNT = 3;
+    private static final int REQUIRED_STABLE_LABEL_COUNT = 2;
     private static final String[] DEFAULT_TOP_DETAIL_TYPES = {
             "Activewear",
             "Denim",
