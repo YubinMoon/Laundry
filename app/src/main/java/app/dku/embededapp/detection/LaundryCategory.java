@@ -6,21 +6,11 @@ public enum LaundryCategory {
     TOP(
             "Tops",
             LaundryRecord.CATEGORY_TOP,
-            new String[] {
-                    "short_sleeved_shirt",
-                    "long_sleeved_shirt",
-                    "outerwear",
-                    "vest",
-                    "sling"
-            }),
+            new String[] {"top"}),
     BOTTOM(
             "Bottoms",
             LaundryRecord.CATEGORY_BOTTOM,
-            new String[] {
-                    "shorts",
-                    "trousers",
-                    "skirt"
-            }),
+            new String[] {"bottom"}),
     TOWEL(
             "Towels",
             LaundryRecord.CATEGORY_TOWEL,
@@ -28,7 +18,7 @@ public enum LaundryCategory {
     SOCK(
             "Socks",
             LaundryRecord.CATEGORY_SOCK,
-            new String[] {"sock"});
+            new String[] {"socks"});
 
     public static final String COLOR_WHITE = "White";
     public static final String COLOR_BLACK = "Black";

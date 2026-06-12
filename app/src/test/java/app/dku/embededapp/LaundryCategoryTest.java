@@ -14,17 +14,17 @@ import org.junit.Test;
 
 public class LaundryCategoryTest {
     @Test
-    public void fromModelLabelMapsLabelsToStorageCategory() {
-        assertSame(LaundryCategory.TOP, LaundryCategory.fromModelLabel("short_sleeved_shirt"));
+    public void fromModelLabelMapsCategoryModelLabelsToStorageCategory() {
+        assertSame(LaundryCategory.TOP, LaundryCategory.fromModelLabel("top"));
         assertEquals(LaundryRecord.CATEGORY_TOP, LaundryCategory.TOP.recordCode);
 
-        assertSame(LaundryCategory.BOTTOM, LaundryCategory.fromModelLabel("trousers"));
+        assertSame(LaundryCategory.BOTTOM, LaundryCategory.fromModelLabel("bottom"));
         assertEquals(LaundryRecord.CATEGORY_BOTTOM, LaundryCategory.BOTTOM.recordCode);
 
         assertSame(LaundryCategory.TOWEL, LaundryCategory.fromModelLabel("towel"));
         assertEquals(LaundryRecord.CATEGORY_TOWEL, LaundryCategory.TOWEL.recordCode);
 
-        assertSame(LaundryCategory.SOCK, LaundryCategory.fromModelLabel("sock"));
+        assertSame(LaundryCategory.SOCK, LaundryCategory.fromModelLabel("socks"));
         assertEquals(LaundryRecord.CATEGORY_SOCK, LaundryCategory.SOCK.recordCode);
     }
 
@@ -32,6 +32,7 @@ public class LaundryCategoryTest {
     public void unknownOrEmptyModelLabelsDoNotMatch() {
         assertNull(LaundryCategory.fromModelLabel(null));
         assertNull(LaundryCategory.fromModelLabel(""));
+        assertNull(LaundryCategory.fromModelLabel("short_sleeved_shirt"));
         assertNull(LaundryCategory.fromModelLabel("dress"));
         assertFalse(LaundryCategory.TOP.matchesModelLabel(null));
     }

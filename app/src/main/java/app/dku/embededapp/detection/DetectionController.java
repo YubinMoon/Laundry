@@ -3,6 +3,7 @@ package app.dku.embededapp.detection;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
@@ -18,6 +19,7 @@ import app.dku.embededapp.ml.TopClassifier;
 
 public final class DetectionController implements AutoCloseable {
     private static final float DETECTION_CONFIDENCE_THRESHOLD = 0.40f;
+    private static final long DETECTION_ANALYSIS_INTERVAL_MS = 300L;
     private static final int REQUIRED_STABLE_LABEL_COUNT = 2;
     private static final String[] DEFAULT_TOP_DETAIL_TYPES = {
             "Activewear",
@@ -47,6 +49,7 @@ public final class DetectionController implements AutoCloseable {
 
     private volatile boolean analysisEnabled;
     private volatile boolean detectionLocked;
+    private volatile long lastAnalysisUptimeMillis;
     private String lastDetectedLabel;
     private int stableLabelCount;
 
@@ -85,6 +88,7 @@ public final class DetectionController implements AutoCloseable {
 
     public void startAnalysis() {
         resetLabelStreak();
+        lastAnalysisUptimeMillis = 0L;
         detectionLocked = false;
         analysisEnabled = true;
         listener.onDetectionCleared();
@@ -93,6 +97,7 @@ public final class DetectionController implements AutoCloseable {
     public void stopAnalysis() {
         analysisEnabled = false;
         detectionLocked = false;
+        lastAnalysisUptimeMillis = 0L;
         resetLabelStreak();
         listener.onDetectionCleared();
     }
@@ -128,6 +133,13 @@ public final class DetectionController implements AutoCloseable {
             imageProxy.close();
             return;
         }
+        long now = SystemClock.elapsedRealtime();
+        long elapsedMillis = now - lastAnalysisUptimeMillis;
+        if (lastAnalysisUptimeMillis > 0L && elapsedMillis < DETECTION_ANALYSIS_INTERVAL_MS) {
+            imageProxy.close();
+            return;
+        }
+        lastAnalysisUptimeMillis = now;
 
         LaundryDetector.DetectionResult result = null;
         AnalyzedDetection analyzedDetection = null;
