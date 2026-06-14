@@ -20,7 +20,7 @@ import app.dku.embededapp.ml.TopClassifier;
 public final class DetectionController implements AutoCloseable {
     private static final float DETECTION_CONFIDENCE_THRESHOLD = 0.40f;
     private static final long DETECTION_ANALYSIS_INTERVAL_MS = 300L;
-    private static final int REQUIRED_STABLE_LABEL_COUNT = 2;
+    private static final int REQUIRED_STABLE_LABEL_COUNT = 3;
     private static final String[] DEFAULT_TOP_DETAIL_TYPES = {
             "Activewear",
             "Denim",
@@ -50,7 +50,7 @@ public final class DetectionController implements AutoCloseable {
     private volatile boolean analysisEnabled;
     private volatile boolean detectionLocked;
     private volatile long lastAnalysisUptimeMillis;
-    private String lastDetectedLabel;
+    private String lastDetectedClassLabel;
     private int stableLabelCount;
 
     public DetectionController(
@@ -160,6 +160,8 @@ public final class DetectionController implements AutoCloseable {
         if (analyzedDetection != null) {
             AnalyzedDetection finalResult = analyzedDetection;
             mainHandler.post(() -> handleAnalyzedDetection(finalResult));
+        } else {
+            mainHandler.post(this::handleNoDetection);
         }
     }
 
@@ -218,10 +220,10 @@ public final class DetectionController implements AutoCloseable {
 
         listener.onDetectionChanged(analyzedDetection);
 
-        if (analyzedDetection.displayLabel.equals(lastDetectedLabel)) {
+        if (result.label.equals(lastDetectedClassLabel)) {
             stableLabelCount++;
         } else {
-            lastDetectedLabel = analyzedDetection.displayLabel;
+            lastDetectedClassLabel = result.label;
             stableLabelCount = 1;
         }
 
@@ -240,8 +242,16 @@ public final class DetectionController implements AutoCloseable {
         }
     }
 
+    private void handleNoDetection() {
+        if (!analysisEnabled || detectionLocked || !listener.isDetectionPageVisible()) {
+            return;
+        }
+        listener.onDetectionCleared();
+        resetLabelStreak();
+    }
+
     private void resetLabelStreak() {
-        lastDetectedLabel = null;
+        lastDetectedClassLabel = null;
         stableLabelCount = 0;
     }
 
