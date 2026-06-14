@@ -18,6 +18,7 @@ import java.io.IOException;
 import app.dku.embededapp.detection.AnalyzedDetection;
 import app.dku.embededapp.detection.DetectionController;
 import app.dku.embededapp.detection.StableDetection;
+import app.dku.embededapp.testdata.TestLaundrySeeder;
 import app.dku.embededapp.ui.compose.LaundryComposeHost;
 import app.dku.embededapp.ui.detection.DetectionOverlayView;
 import app.dku.embededapp.ui.detection.DetectionResultController;
@@ -36,6 +37,7 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
 
+        seedTestLaundryData();
         uiHandles = LaundryComposeHost.install(this, createUiCallbacks());
         setupCamera();
         setupDetection();
@@ -158,6 +160,14 @@ public class MainActivity extends AppCompatActivity implements DetectionControll
                 ensureCameraPreview();
             }
         };
+    }
+
+    private void seedTestLaundryData() {
+        try {
+            TestLaundrySeeder.seedIfNeeded(this);
+        } catch (IOException | RuntimeException exception) {
+            Toast.makeText(this, R.string.test_laundry_seed_failed, Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void showPage(int page) {

@@ -57,6 +57,7 @@
     <string name="camera_permission_denied">Camera permission is required.</string>
     <string name="camera_start_failed">Could not start the camera preview.</string>
     <string name="model_load_failed">Could not load the model.</string>
+    <string name="test_laundry_seed_failed">Could not load test laundry data.</string>
     <string name="detected_laundry_title">Laundry Detected</string>
     <string name="laundry_category_label">Category</string>
     <string name="laundry_detail_type_label">Detail Type</string>
