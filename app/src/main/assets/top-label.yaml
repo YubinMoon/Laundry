@@ -1,15 +1,4 @@
-description: Ultralytics YOLO26n-cls model trained on C:\Users\TERRY\project\laundryYolo\.dataset\top_cls
-author: Ultralytics
-date: '2026-06-02T01:47:40.137798'
-version: 8.4.51
-license: AGPL-3.0 License (https://ultralytics.com/license)
-docs: https://docs.ultralytics.com
-stride: 1
-task: classify
-batch: 1
-imgsz:
-- 320
-- 320
+nc: 6
 names:
   0: Activewear
   1: Denim
@@ -17,12 +6,3 @@ names:
   3: Shirts
   4: Sweaters
   5: T-shirts
-args:
-  data: null
-  batch: 1
-  fraction: 1.0
-  half: false
-  int8: false
-  nms: false
-channels: 3
-end2end: false
