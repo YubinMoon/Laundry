@@ -1,78 +1,166 @@
-# Laundry Classification Service
+# Laundry Mate
 
-A service that helps separate and wash laundry by storing and identifying it through photos.
+<p align="center">
+  <a href="README-kr.md">한국어</a>
+  ·
+  <a href="README.md"><b>English</b></a>
+</p>
 
-## Core Logic
+Laundry Mate is an Android app that recognizes laundry from photos and helps users separate loads by creating laundry groups based on color and clothing type. When the app detects laundry in the camera view, users can review and save the recognition result, and saved laundry items flow into group-based washing recommendations and laundry tips.
 
-### Laundry Registration
+## App Screens
 
-1. User takes a photo of the laundry with a camera.
-2. The captured image is classified by type using YOLO.
-3. Color is classified through an algorithm.
-4. Material is classified through user input.
+<!-- TODO: Add four actual app screenshots to the paths below, then remove this comment. Recommended filenames: docs/assets/screen-home.png, docs/assets/screen-register.png, docs/assets/screen-groups.png, docs/assets/screen-tips.png -->
 
-### Laundry Classification
+<table>
+  <tr>
+    <td><img src="docs/assets/screen-home.png" alt="Home screen" width="180"></td>
+    <td><img src="docs/assets/screen-register.png" alt="Laundry registration screen" width="180"></td>
+    <td><img src="docs/assets/screen-groups.png" alt="Laundry groups screen" width="180"></td>
+    <td><img src="docs/assets/screen-tips.png" alt="Laundry tips screen" width="180"></td>
+  </tr>
+  <tr>
+    <td align="center">Home</td>
+    <td align="center">Register Laundry</td>
+    <td align="center">Laundry Groups</td>
+    <td align="center">Laundry Tips</td>
+  </tr>
+</table>
 
-1. Create groups for each combination of type, color, and material.
-2. Add laundry to each group.
+## Laundry Detection Flow
 
-### Laundry Recommendation
+<!-- TODO: Add a GIF showing the result confirmation modal after laundry detection to docs/assets/detection-modal.gif, then remove this comment. -->
 
-1. Check the number of laundry items in each group.
-2. Recommend laundry to the user when it exceeds a threshold.
-3. Reset the group after washing is complete.
+<p align="center">
+  <img src="docs/assets/detection-modal.gif" alt="Result confirmation modal after laundry detection" width="200">
+</p>
 
-## Development Sequence
+1. The user starts the camera preview on the registration screen.
+2. The main detection model detects laundry in the frame and maps the `top`, `bottom`, `socks`, and `towel` labels to the app's `Tops`, `Bottoms`, `Socks`, and `Towels` categories.
+3. The detected region is cropped, and if it is a top or bottom, the detail model classifies its detailed type.
+4. A confirmation modal shows the color analysis result and model classification result together.
+5. When the user saves the item, the laundry record and cropped image are stored in the local database and automatically assigned to a laundry group.
 
-### Define labels to be classified via YOLO
+## Trained Models
 
-- Tops [T-shirts, Shirts, Sweaters, Hoodies, Activewear, Denim]
-- Bottoms [Chinos, Slacks, Joggers, Activewear, Skirts, Jeans]
-- Towels
-- Socks
+The app includes one `YOLO26n`-based main detection model and two `YOLO26n-cls`-based detail models.
 
-### Prepare dataset for YOLO training
+| Model | Role | Output Classes | Training Dataset Size |
+| --- | --- | --- | --- |
+| Main detection model (`YOLO26n`) | Detects laundry regions and classifies app-level categories | `top`, `bottom`, `socks`, `towel` | tops/bottoms 18k, socks 8k, towels 3k |
+| Top detail model (`YOLO26n-cls`) | Classifies cropped top images into detailed types | `Activewear`, `Denim`, `Hoodies`, `Shirts`, `Sweaters`, `T-shirts` | 3k per type |
+| Bottom detail model (`YOLO26n-cls`) | Classifies cropped bottom images into detailed types | `Activewear`, `Chinos`, `Jeans`, `Joggers`, `Skirts`, `Slacks` | 3k per type |
 
-Classify Tops and Bottoms classes based on FashionDataset2 - method described below.
-Extract Towels and Socks data from open source datasets.
+## Model Evaluation Results
 
-#### How to prepare Tops and Bottoms datasets
+### Top/Bottom Detail Models
 
-Prepared dataset
+| Model | val accuracy/top1 | top5 | macro F1 | weighted F1 |
+| --- | --- | --- | --- | --- |
+| Top | 95.49% | 100% | 95.10% | 95.49% |
+| Bottom | 92.15% | 100% | 92.11% | 92.11% |
 
-[Link](https://drive.google.com/file/d/16-2kHHYwhXMtn_zckTDlaIMrPsIAkIAd/view?usp=drive_link)
+### Main Detection Model
 
-```
-dataset/[0-9]+/(images|labels)/[0-9].(jpg|txt)
-```
+| class | Precision | Recall | F1 | mAP50 | mAP50-95 |
+| --- | --- | --- | --- | --- | --- |
+| all | 81.48% | 71.88% | - | 76.70% | 61.76% |
+| top | 70.07% | 73.26% | 71.63% | 73.97% | 61.24% |
+| bottom | 74.02% | 75.01% | 74.51% | 75.73% | 63.31% |
+| socks | 93.54% | 91.62% | 92.57% | 94.68% | 77.00% |
+| towel | 88.28% | 47.61% | 61.86% | 62.40% | 45.51% |
 
-In the dataset above, the `[0-9]+` part is the Category_id of the existing FashionDataset2 and has the following values:
+## Dataset Sources
 
-1. short_sleeved_shirt
-2. long_sleeved_shirt
-3. short_sleeved_outwear
-4. long_sleeved_outwear
-5. vest 
-6. sling 
-7. shorts 
-8. trousers 
-9. skirt 
-10. short_sleeved_dress 
-11. long_sleeved_dress 
-12. vest_dress 
-13. sling_dress 
+| Data Scope | Source | Purpose |
+| --- | --- | --- |
+| Top/bottom source images | [DeepFashion2 Dataset](https://github.com/switchablenorms/DeepFashion2) | Builds datasets for the main detection model and top/bottom detail models |
+| Towel images | [Roboflow Universe](https://universe.roboflow.com/) | Builds the `towel` class for the main detection model |
+| Sock images | [Roboflow Universe](https://universe.roboflow.com/) | Builds the `socks` class for the main detection model |
 
-Perform classification with reference to this.
+<!-- TODO: Add DeepFashion2 license information. -->
 
-- Create a `new_dataset` directory.
-- Create class directories (Skirts, Jeans, Etc...) for later classification.
-- Store more than 1500 pieces of data in each directory.
-- Compress all data and share via Drive.
+## Dataset Preparation
 
-### YOLO Training
+The training datasets were rebuilt by extracting only the classes required by the app from the raw datasets. The final datasets are managed separately as the main detection model dataset and the top/bottom detail model datasets. The top/bottom detail models were prepared first, and the source images and bbox labels for quality-checked cropped images from that process were reused as training data for the main detection model.
 
-Planned for later.
+### Main Detection Model Dataset
 
-### App Development
+The main detection model uses `YOLO26n` to find laundry in the camera view and map detected objects directly to the app's top-level categories. It was trained with four labels: `top`, `bottom`, `socks`, and `towel`. The `top` and `bottom` data were built from the source images and bbox labels of cropped images that passed CLIP-based detail-type selection, with towel and sock data added afterward.
 
-Planned for later.
+| App Category | Model Label | Dataset Size | Preparation Method |
+| --- | --- | --- | --- |
+| Tops | `top` | 18k | Source images from top crops that passed CLIP selection were merged as `top` |
+| Bottoms | `bottom` | 18k | Source images from bottom crops that passed CLIP selection were merged as `bottom` |
+| Socks | `socks` | 8k | Sock data from Roboflow Universe was prepared as `socks` |
+| Towels | `towel` | 3k | Towel data from Roboflow Universe was used as-is |
+
+### DeepFashion2 Category Split
+
+Among the default `category_id` values in DeepFashion2, only the top and bottom categories were used, while dress-family categories were excluded.
+
+| Usage | DeepFashion2 category_id | Source Category |
+| --- | --- | --- |
+| Tops | `1`, `2`, `3`, `4`, `5`, `6` | short sleeve top, long sleeve top, short sleeve outwear, long sleeve outwear, vest, sling |
+| Bottoms | `7`, `8`, `9` | shorts, trousers, skirt |
+| Excluded | `10`, `11`, `12`, `13` | short sleeve dress, long sleeve dress, vest dress, sling dress |
+
+### Top/Bottom Detail Datasets
+
+The top and bottom detail models were built as `YOLO26n-cls` training datasets by applying CLIP-based detail-class selection to images cropped from bbox annotations in the DeepFashion2 source data. CLIP was not used as a separate data source. It was used as a classification tool to divide cropped images into detailed clothing classes and select high-quality images for training. In the app, the main detection model also crops the detected region first, then passes the cropped image into the detail model.
+
+1. Load the DeepFashion2 source images and annotations.
+2. If `category_id` is `1`-`6`, classify it as a top; if it is `7`-`9`, classify it as a bottom; exclude the `10`-`13` dress family.
+3. Crop the clothing region using the bbox coordinates in the annotation and save the cropped image separately.
+4. Define text prompts for each target detail class, then use CLIP to calculate similarity between each cropped image and prompt.
+5. Score the top detail classes (`Activewear`, `Denim`, `Hoodies`, `Shirts`, `Sweaters`, `T-shirts`) and bottom detail classes (`Activewear`, `Chinos`, `Jeans`, `Joggers`, `Skirts`, `Slacks`).
+6. Select the top 3,000 cropped images by CLIP score for each detail type.
+7. Save the selected cropped images into class directories and create train/validation/test splits.
+8. Collect the source images and bbox labels for the selected cropped images again as `top`/`bottom` main detection training data.
+
+<!-- TODO: Add the CLIP model name, prompt examples, manual review criteria, and number of removed cropped images. -->
+
+## Color Type Classification
+
+Color type classification does not use a separate trained model. Instead, it analyzes pixels in the laundry region that the main detection model stably detected, converts them to HSV values, and classifies the item as one of `White`, `Black`, `Light`, `Dark`, and `Mixed`.
+
+1. Convert the detected bounding box to the original frame size.
+2. Sample the inside of the box after insetting it by 20% horizontally and vertically to reduce background influence.
+3. Uniformly sample up to 64x64 pixels from the sample region, then convert each pixel's RGB value to HSV.
+4. Put each pixel into a `White`, `Black`, `Light`, or `Dark` bucket based on brightness (`V`) and saturation (`S`) thresholds.
+5. If the light family (`White` + `Light`) or dark family (`Black` + `Dark`) accounts for at least 55% of all sampled pixels, choose the final type within that family.
+6. Store the result as `Mixed` if neither family is sufficiently dominant or the image cannot be analyzed.
+
+| Color Type | Classification Rule |
+| --- | --- |
+| `White` | The light family is dominant, and at least 55% of that family is `White` pixels |
+| `Black` | The dark family is dominant, and at least 35% of that family is `Black` pixels |
+| `Light` | The light family is dominant, but the `White` ratio is below the threshold |
+| `Dark` | The dark family is dominant, but the `Black` ratio is below the threshold |
+| `Mixed` | Neither the light family nor the dark family is at least 55% dominant |
+
+## Laundry Group Classification
+
+Saved laundry items are automatically grouped based on the main category, detail type, and color result. Completed groups are preserved, and if an open group with the same name already exists, new laundry items are added to that group.
+
+| Group | Assignment Condition | Washing Method |
+| --- | --- | --- |
+| `Light General Clothes` | General clothes with color `White` or `Light` that do not match another special group | <!-- TODO: Add the washing method for light general clothes. --> |
+| `Dark General Clothes` | General clothes with color `Black` or `Dark` that do not match another special group | Wash inside out to reduce fading. |
+| `Mixed General Clothes` | General clothes with color `Mixed` or not classified as light/dark | <!-- TODO: Add the washing method for mixed general clothes. --> |
+| `Activewear` | Tops or bottoms with detail type `Activewear` | <!-- TODO: Add the washing method for activewear. --> |
+| `Delicates` | Clothes with detail type `Sweaters` or `Skirts` | <!-- TODO: Add the washing method for delicates. --> |
+| `Light Denim` | Detail type `Denim` or `Jeans` with color `White` or `Light` | Use cold water and check whether tumble drying is allowed. |
+| `Dark Denim` | Detail type `Denim` or `Jeans` with color `Black` or `Dark` | Use cold water and check whether tumble drying is allowed. |
+| `Towels` | Laundry with main category `Towels` | Avoid fabric softener to preserve absorbency. |
+
+Socks are not assigned to a fixed sock-only laundry group. They are currently assigned to general clothing groups based on color.
+
+<!-- TODO: Add more detail about each group's washing cycle, recommendation priority rules, and group completion policy. -->
+
+## App Behavior Summary
+
+- Home: Summarizes the number of saved laundry items, pending groups, and completed groups, then recommends the best group to wash today.
+- Register: Detects laundry through the camera and lets the user review the category, detail type, and color in a confirmation modal before saving.
+- Groups: Shows saved laundry by recommended group, clothing type, and color.
+- Tips: Provides washing tips for key groups such as towels, dark clothes, and denim.
