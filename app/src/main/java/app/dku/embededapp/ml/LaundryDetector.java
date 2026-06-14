@@ -33,7 +33,7 @@ import java.util.List;
 public final class LaundryDetector implements AutoCloseable {
 
     private static final String MODEL_ASSET = "main-model.tflite";
-    private static final String LABEL_ASSET = "main-model.yaml";
+    private static final String LABEL_ASSET = "main-label.yaml";
     private static final int LETTERBOX_COLOR = Color.rgb(114, 114, 114);
 
     private final Interpreter interpreter;
