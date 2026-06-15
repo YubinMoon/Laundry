@@ -6,7 +6,7 @@
   <a href="README.md"><b>English</b></a>
 </p>
 
-Laundry Mate is an Android app that recognizes laundry from photos and helps users separate loads by creating laundry groups based on color and clothing type. When the app detects laundry in the camera view, users can review and save the recognition result, and saved laundry items flow into group-based washing recommendations and laundry tips.
+Laundry Mate is an Android app that recognizes laundry from photos and helps users separate laundry loads by creating washing groups based on color and clothing type. When laundry is detected in the camera view, users can review and save the recognition result, and saved laundry items flow into group-based recommendation order and laundry tips.
 
 ## App Screens
 
@@ -21,7 +21,7 @@ Laundry Mate is an Android app that recognizes laundry from photos and helps use
   </tr>
   <tr>
     <td align="center">Home</td>
-    <td align="center">Register Laundry</td>
+    <td align="center">Laundry Registration</td>
     <td align="center">Laundry Groups</td>
     <td align="center">Laundry Tips</td>
   </tr>
@@ -39,11 +39,13 @@ Laundry Mate is an Android app that recognizes laundry from photos and helps use
 2. The main detection model detects laundry in the frame and maps the `top`, `bottom`, `socks`, and `towel` labels to the app's `Tops`, `Bottoms`, `Socks`, and `Towels` categories.
 3. The detected region is cropped, and if it is a top or bottom, the detail model classifies its detailed type.
 4. A confirmation modal shows the color analysis result and model classification result together.
-5. When the user saves the item, the laundry record and cropped image are stored in the local database and automatically assigned to a laundry group.
+5. When the user saves the item, the laundry record and cropped image are stored in the local DB and automatically assigned to a laundry group.
 
 ## Trained Models
 
 The app includes one `YOLO26n`-based main detection model and two `YOLO26n-cls`-based detail models.
+
+`YOLO26m`, `YOLO26s`, and `YOLO26n` were all tested for the main detection model, but the performance gap between them was not large. Therefore, the faster-to-train `YOLO26n` model was selected and trained for more epochs to improve performance.
 
 | Model | Role | Output Classes | Training Dataset Size |
 | --- | --- | --- | --- |
@@ -70,30 +72,36 @@ The app includes one `YOLO26n`-based main detection model and two `YOLO26n-cls`-
 | socks | 93.54% | 91.62% | 92.57% | 94.68% | 77.00% |
 | towel | 88.28% | 47.61% | 61.86% | 62.40% | 45.51% |
 
+The towel class shows lower performance because the absolute amount of towel data is still limited.
+
 ## Dataset Sources
 
 | Data Scope | Source | Purpose |
 | --- | --- | --- |
-| Top/bottom source images | [DeepFashion2 Dataset](https://github.com/switchablenorms/DeepFashion2) | Builds datasets for the main detection model and top/bottom detail models |
-| Towel images | [Roboflow Universe](https://universe.roboflow.com/) | Builds the `towel` class for the main detection model |
-| Sock images | [Roboflow Universe](https://universe.roboflow.com/) | Builds the `socks` class for the main detection model |
-
-<!-- TODO: Add DeepFashion2 license information. -->
+| Top/bottom source images | [DeepFashion2 Dataset](https://github.com/switchablenorms/DeepFashion2) | Builds top/bottom training data with bbox and labels |
+| Towel/sock source images | [Roboflow Universe](https://universe.roboflow.com/) | Builds the `towel` and `socks` classes for the main detection model |
+| Additional towel images | [Open Images Dataset V7](https://storage.googleapis.com/openimages/web/download_v7.html) | Supplements the insufficient `towel` objects |
 
 ## Dataset Preparation
 
 The training datasets were rebuilt by extracting only the classes required by the app from the raw datasets. The final datasets are managed separately as the main detection model dataset and the top/bottom detail model datasets. The top/bottom detail models were prepared first, and the source images and bbox labels for quality-checked cropped images from that process were reused as training data for the main detection model.
 
+### RAW Dataset Selection
+
+DeepFashion2 Dataset was selected as the base clothing dataset. DeepFashion2 includes not only shopping mall clothing images, but also images taken directly by general users, so it was considered suitable for this project, where the model needs to distinguish clothes in various states. It also provides bbox and label annotations across a large 801k-scale dataset, making it practical to convert into training data.
+
+The towel and socks datasets mainly used public datasets from Roboflow Universe. Socks data was relatively easy to secure in sufficient quantity, but towel data from Roboflow Universe was only about 2.5k objects. Near the end of the project, additional towel data was extracted from Open Images Dataset V7, resulting in a final towel set of about 3k objects.
+
 ### Main Detection Model Dataset
 
-The main detection model uses `YOLO26n` to find laundry in the camera view and map detected objects directly to the app's top-level categories. It was trained with four labels: `top`, `bottom`, `socks`, and `towel`. The `top` and `bottom` data were built from the source images and bbox labels of cropped images that passed CLIP-based detail-type selection, with towel and sock data added afterward.
+The main detection model uses `YOLO26n` to find laundry in the camera view and map detected objects directly to the app's top-level categories. It was trained with four labels: `top`, `bottom`, `socks`, and `towel`. The `top` and `bottom` data were built from the source images and bbox labels of cropped images that passed CLIP-based detail-type selection. Socks and towel data from Roboflow Universe and additional towel data extracted from Open Images Dataset V7 were then added.
 
 | App Category | Model Label | Dataset Size | Preparation Method |
 | --- | --- | --- | --- |
 | Tops | `top` | 18k | Source images from top crops that passed CLIP selection were merged as `top` |
 | Bottoms | `bottom` | 18k | Source images from bottom crops that passed CLIP selection were merged as `bottom` |
-| Socks | `socks` | 8k | Sock data from Roboflow Universe was prepared as `socks` |
-| Towels | `towel` | 3k | Towel data from Roboflow Universe was used as-is |
+| Socks | `socks` | 8k | Sock objects secured from Roboflow Universe were prepared as `socks` |
+| Towels | `towel` | 3k | Open Images V7 extracted data was added to Roboflow Universe towel data |
 
 ### DeepFashion2 Category Split
 
@@ -107,18 +115,16 @@ Among the default `category_id` values in DeepFashion2, only the top and bottom 
 
 ### Top/Bottom Detail Datasets
 
-The top and bottom detail models were built as `YOLO26n-cls` training datasets by applying CLIP-based detail-class selection to images cropped from bbox annotations in the DeepFashion2 source data. CLIP was not used as a separate data source. It was used as a classification tool to divide cropped images into detailed clothing classes and select high-quality images for training. In the app, the main detection model also crops the detected region first, then passes the cropped image into the detail model.
+The top and bottom detail models were built as `YOLO26n-cls` training datasets by applying CLIP-based detail-class selection to images cropped from bbox annotations in the DeepFashion2 source data. The CLIP model used for this step was `openai/clip-vit-base-patch32`. CLIP was not used as a separate data source; it was used as a classification tool to divide cropped images into detailed clothing classes and select high-quality images for training. In the app, the main detection model also crops the detected region first, then passes the cropped image into the detail model.
 
 1. Load the DeepFashion2 source images and annotations.
 2. If `category_id` is `1`-`6`, classify it as a top; if it is `7`-`9`, classify it as a bottom; exclude the `10`-`13` dress family.
 3. Crop the clothing region using the bbox coordinates in the annotation and save the cropped image separately.
-4. Define text prompts for each target detail class, then use CLIP to calculate similarity between each cropped image and prompt.
+4. Define text prompts for each target detail class, then use `openai/clip-vit-base-patch32` to calculate similarity between each cropped image and prompt.
 5. Score the top detail classes (`Activewear`, `Denim`, `Hoodies`, `Shirts`, `Sweaters`, `T-shirts`) and bottom detail classes (`Activewear`, `Chinos`, `Jeans`, `Joggers`, `Skirts`, `Slacks`).
 6. Select the top 3,000 cropped images by CLIP score for each detail type.
 7. Save the selected cropped images into class directories and create train/validation/test splits.
 8. Collect the source images and bbox labels for the selected cropped images again as `top`/`bottom` main detection training data.
-
-<!-- TODO: Add the CLIP model name, prompt examples, manual review criteria, and number of removed cropped images. -->
 
 ## Color Type Classification
 
@@ -155,8 +161,6 @@ Saved laundry items are automatically grouped based on the main category, detail
 | `Towels` | Laundry with main category `Towels` | Avoid fabric softener to preserve absorbency. |
 
 Socks are not assigned to a fixed sock-only laundry group. They are currently assigned to general clothing groups based on color.
-
-<!-- TODO: Add more detail about each group's washing cycle, recommendation priority rules, and group completion policy. -->
 
 ## App Behavior Summary
 
