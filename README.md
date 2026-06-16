@@ -64,15 +64,15 @@ The app includes one `YOLO26n`-based main detection model and two `YOLO26n-cls`-
 
 ### Main Detection Model
 
-| class | Precision | Recall | F1 | mAP50 | mAP50-95 |
-| --- | --- | --- | --- | --- | --- |
-| all | 81.48% | 71.88% | - | 76.70% | 61.76% |
-| top | 70.07% | 73.26% | 71.63% | 73.97% | 61.24% |
-| bottom | 74.02% | 75.01% | 74.51% | 75.73% | 63.31% |
-| socks | 93.54% | 91.62% | 92.57% | 94.68% | 77.00% |
-| towel | 88.28% | 47.61% | 61.86% | 62.40% | 45.51% |
+| class | images | objects | precision | recall | mAP50 | mAP50-95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| all | 3,830 | 4,851 | 0.813 | 0.745 | 0.789 | 0.635 |
+| top | 1,694 | 1,702 | 0.726 | 0.771 | 0.762 | 0.645 |
+| bottom | 1,795 | 1,798 | 0.743 | 0.790 | 0.795 | 0.676 |
+| socks | 158 | 1,011 | 0.942 | 0.908 | 0.960 | 0.776 |
+| towel | 183 | 340 | 0.841 | 0.512 | 0.640 | 0.444 |
 
-The towel class shows lower performance because the absolute amount of towel data is still limited.
+The towel class has a lower recall than the other classes, so missed towel detections remain the main improvement target.
 
 ## Dataset Sources
 
