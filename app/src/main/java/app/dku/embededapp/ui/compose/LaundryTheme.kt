@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.colorResource
 import app.dku.embededapp.R
 
+// Applies the Laundry Mate color scheme to all Compose screens.
 @Composable
 fun LaundryTheme(content: @Composable () -> Unit) {
     val colors = lightColorScheme(
