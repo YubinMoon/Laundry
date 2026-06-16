@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.dku.embededapp.data.LaundryRecord
@@ -105,6 +106,53 @@ class LaundryComposeScreenTest {
     }
 
     @Test
+    fun homePageTopPickDetailsButtonSelectsRecommendation() {
+        var selectedGroupId: Long? = null
+        composeRule.setContent {
+            LaundryTheme {
+                HomePage(
+                    state = LaundryHomeState(
+                        recommendations = listOf(
+                            LaundryHomeRecommendation(
+                                groupId = 42L,
+                                name = "Dark General Clothes",
+                                itemCount = 3,
+                                oldestCreatedAt = 1000L,
+                                notWashedDays = 12,
+                            ),
+                            LaundryHomeRecommendation(
+                                groupId = 84L,
+                                name = "Activewear",
+                                itemCount = 1,
+                                oldestCreatedAt = 2000L,
+                                notWashedDays = 4,
+                            ),
+                        ),
+                    ),
+                    onRegisterClick = {},
+                    onViewGroupsClick = {},
+                    onRecommendationClick = { groupId ->
+                        selectedGroupId = groupId
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Details").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(42L, selectedGroupId)
+        }
+
+        selectedGroupId = null
+        composeRule.onNodeWithText("Activewear", substring = true).performScrollTo().performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(84L, selectedGroupId)
+        }
+    }
+
+    @Test
     fun homeControllerSummarizesAllAndPendingLaundry() {
         val now = TimeUnit.DAYS.toMillis(10)
         saveRecords { bitmap ->
@@ -152,6 +200,30 @@ class LaundryComposeScreenTest {
             assertEquals(listOf(10L, 7L, 5L), controller.state.recommendations.map { recommendation -> recommendation.score })
         } finally {
             controller.close()
+        }
+    }
+
+    @Test
+    fun homeRecommendationOpensRecommendedGroupDetails() {
+        val now = TimeUnit.DAYS.toMillis(10)
+        saveRecords { bitmap ->
+            saveRecord(bitmap, record(LaundryRecord.CATEGORY_TOP, "T-shirts", "White", "short_sleeved_shirt", now - TimeUnit.DAYS.toMillis(8)))
+            saveRecord(bitmap, record(LaundryRecord.CATEGORY_TOP, "Shirts", "Light", "long_sleeved_shirt", now - TimeUnit.DAYS.toMillis(2)))
+        }
+
+        val homeController = LaundryHomeController(context) { now }
+        val controller = LaundryGroupsController(context)
+        groupsController = controller
+        try {
+            val groupId = homeController.state.recommendations.first().groupId
+
+            controller.showRecommendedGroupDetails(groupId!!)
+
+            assertEquals(true, controller.detailsVisible)
+            assertEquals("Light General Clothes", controller.selectedGroup?.name)
+            assertEquals(2, controller.selectedGroup?.records?.size)
+        } finally {
+            homeController.close()
         }
     }
 

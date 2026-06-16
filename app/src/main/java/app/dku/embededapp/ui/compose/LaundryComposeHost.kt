@@ -196,10 +196,19 @@ fun LaundryApp(
                         state = homeController.state,
                         onRegisterClick = callbacks::onStartRegisterClicked,
                         onViewGroupsClick = callbacks::onViewGroupsClicked,
+                        onRecommendationClick = { groupId ->
+                            groupsController.showRecommendedGroupDetails(groupId)
+                        },
                     )
                 }
             }
         }
+    }
+    if (selectedPage != LaundryComposeHost.PAGE_GROUPS) {
+        LaundryGroupDialogs(
+            controller = groupsController,
+            onDataChanged = homeController::refresh,
+        )
     }
 }
 
@@ -266,6 +275,7 @@ fun HomePage(
     state: LaundryHomeState,
     onRegisterClick: () -> Unit,
     onViewGroupsClick: () -> Unit,
+    onRecommendationClick: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -277,6 +287,7 @@ fun HomePage(
         PriorityCard(
             recommendation = state.priorityRecommendation,
             onRegisterClick = onRegisterClick,
+            onRecommendationClick = onRecommendationClick,
         )
         Text(
             text = stringResource(R.string.summary_title),
@@ -306,7 +317,10 @@ fun HomePage(
                 Text(stringResource(R.string.view_all))
             }
         }
-        RecommendedOrderCard(recommendations = state.recommendations)
+        RecommendedOrderCard(
+            recommendations = state.recommendations,
+            onRecommendationClick = onRecommendationClick,
+        )
     }
 }
 
@@ -314,6 +328,7 @@ fun HomePage(
 private fun PriorityCard(
     recommendation: LaundryHomeRecommendation?,
     onRegisterClick: () -> Unit,
+    onRecommendationClick: (Long) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -322,11 +337,35 @@ private fun PriorityCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            StatusBadge(
-                text = stringResource(if (recommendation == null) R.string.priority_empty_badge else R.string.priority_badge),
-                foreground = R.color.laundry_success,
-                background = R.color.laundry_success_background,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatusBadge(
+                    text = stringResource(if (recommendation == null) R.string.priority_empty_badge else R.string.priority_badge),
+                    foreground = R.color.laundry_success,
+                    background = R.color.laundry_success_background,
+                )
+                recommendation?.groupId?.let { groupId ->
+                    Button(
+                        onClick = { onRecommendationClick(groupId) },
+                        modifier = Modifier.padding(start = 10.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colorResource(R.color.white),
+                            contentColor = colorResource(R.color.laundry_primary_dark),
+                        ),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.view_details),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
             Text(
                 text = recommendation?.name ?: stringResource(R.string.priority_empty_title),
                 modifier = Modifier.padding(top = 17.dp),
@@ -452,6 +491,7 @@ private fun SummaryGroupMetric(
 @Composable
 private fun RecommendedOrderCard(
     recommendations: List<LaundryHomeRecommendation>,
+    onRecommendationClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -469,23 +509,33 @@ private fun RecommendedOrderCard(
                 )
             } else {
                 recommendations.forEachIndexed { index, recommendation ->
-                    Text(
-                        text = stringResource(R.string.recommend_item_format, index + 1, recommendation.name),
-                        modifier = Modifier.padding(top = if (index == 0) 0.dp else 17.dp),
-                        color = colorResource(R.color.laundry_text),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = stringResource(
-                            R.string.recommend_detail_format,
-                            formatItemCount(recommendation.itemCount),
-                            formatNotWashedAge(recommendation.notWashedDays),
-                        ),
-                        modifier = Modifier.padding(top = 4.dp),
-                        color = colorResource(R.color.laundry_text_muted),
-                        fontSize = 13.sp,
-                    )
+                    val rowModifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = if (index == 0) 0.dp else 17.dp)
+                        .then(
+                            recommendation.groupId?.let { groupId ->
+                                Modifier.clickable { onRecommendationClick(groupId) }
+                            } ?: Modifier,
+                        )
+                        .padding(vertical = 4.dp)
+                    Column(modifier = rowModifier) {
+                        Text(
+                            text = stringResource(R.string.recommend_item_format, index + 1, recommendation.name),
+                            color = colorResource(R.color.laundry_text),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.recommend_detail_format,
+                                formatItemCount(recommendation.itemCount),
+                                formatNotWashedAge(recommendation.notWashedDays),
+                            ),
+                            modifier = Modifier.padding(top = 4.dp),
+                            color = colorResource(R.color.laundry_text_muted),
+                            fontSize = 13.sp,
+                        )
+                    }
                 }
             }
         }
@@ -593,13 +643,30 @@ fun LaundryGroupsScreen(
         }
     }
 
+    LaundryGroupDialogs(controller = controller)
+}
+
+@Composable
+private fun LaundryGroupDialogs(
+    controller: LaundryGroupsController,
+    onDataChanged: () -> Unit = {},
+) {
     if (controller.detailsVisible) {
-        GroupDetailsDialog(controller = controller)
+        GroupDetailsDialog(
+            controller = controller,
+            onMarkDone = {
+                controller.markDone()
+                onDataChanged()
+            },
+        )
     }
     controller.pendingDelete?.let { record ->
         DeleteRecordDialog(
             onDismiss = controller::clearPendingDelete,
-            onConfirm = { controller.deleteRecord(record) },
+            onConfirm = {
+                controller.deleteRecord(record)
+                onDataChanged()
+            },
         )
     }
 }
@@ -649,7 +716,10 @@ private fun GroupSummaryCard(
 }
 
 @Composable
-private fun GroupDetailsDialog(controller: LaundryGroupsController) {
+private fun GroupDetailsDialog(
+    controller: LaundryGroupsController,
+    onMarkDone: () -> Unit,
+) {
     val group = controller.selectedGroup ?: return
     AlertDialog(
         onDismissRequest = controller::hideDetails,
@@ -688,7 +758,7 @@ private fun GroupDetailsDialog(controller: LaundryGroupsController) {
         confirmButton = {
             if (!group.readOnly) {
                 Button(
-                    onClick = controller::markDone,
+                    onClick = onMarkDone,
                     enabled = !group.done,
                     shape = RoundedCornerShape(14.dp),
                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
@@ -937,6 +1007,7 @@ class LaundryHomeController(
     private fun LaundryRecordStore.StoredGroup.toRecommendation(now: Long): LaundryHomeRecommendation? {
         val oldestCreatedAt = records.minOfOrNull { record -> record.record.createdAt } ?: return null
         return LaundryHomeRecommendation(
+            groupId = id,
             name = name,
             itemCount = records.size,
             oldestCreatedAt = oldestCreatedAt,
@@ -983,6 +1054,7 @@ data class LaundryHomeSummary(
 )
 
 data class LaundryHomeRecommendation(
+    val groupId: Long? = null,
     val name: String,
     val itemCount: Int,
     val oldestCreatedAt: Long,
@@ -1039,6 +1111,13 @@ class LaundryGroupsController(context: Context) : AutoCloseable {
     fun showDetails(group: LaundryDisplayGroup) {
         refresh()
         selectedGroup = groups.firstOrNull { it.id == group.id }
+        detailsVisible = selectedGroup != null
+    }
+
+    fun showRecommendedGroupDetails(groupId: Long) {
+        selectedFilter = LaundryGroupFilter.RECOMMENDED
+        refresh()
+        selectedGroup = groups.firstOrNull { it.storeGroupId == groupId }
         detailsVisible = selectedGroup != null
     }
 
