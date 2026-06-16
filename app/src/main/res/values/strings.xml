@@ -79,6 +79,16 @@
     <string name="group_record_delete_title">Delete Record</string>
     <string name="group_record_delete_message">Delete this laundry record?</string>
     <string name="group_record_delete_cancel">Cancel</string>
+    <string name="group_tip_button">Tip</string>
+    <string name="group_tip_towels">Wash towels separately in warm water and skip fabric softener so they keep absorbing well.</string>
+    <string name="group_tip_denim">Turn denim inside out, use cold water, and air dry when possible to protect color and fit.</string>
+    <string name="group_tip_activewear">Use cold water and avoid fabric softener so stretch fabrics keep their moisture-wicking finish.</string>
+    <string name="group_tip_delicates">Use a gentle cycle or mesh bag, then reshape and air dry to reduce stretching.</string>
+    <string name="group_tip_socks">Wash socks inside out in warm water and dry them fully before pairing.</string>
+    <string name="group_tip_dark">Turn dark clothes inside out and wash cold to reduce fading.</string>
+    <string name="group_tip_light">Wash light clothes with similar shades and pre-treat visible stains before the cycle.</string>
+    <string name="group_tip_mixed">Use cool water and a color catcher when mixed colors cannot be separated.</string>
+    <string name="group_tip_default">Use cold water, sort similar fabrics together, and check care labels before drying.</string>
     <string name="group_done_button">Done</string>
     <string name="group_done_disabled">Done</string>
     <string name="group_record_detail_type">Detail Type</string>

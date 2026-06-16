@@ -7,6 +7,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.ColorRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -47,6 +50,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,8 +59,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -64,9 +70,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import app.dku.embededapp.R
 import app.dku.embededapp.data.LaundryRecord
 import app.dku.embededapp.data.LaundryRecordStore
@@ -74,6 +83,7 @@ import app.dku.embededapp.detection.LaundryCategory
 import java.io.File
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
 
 object LaundryComposeHost {
     const val PAGE_HOME = 0
@@ -721,15 +731,76 @@ private fun GroupDetailsDialog(
     onMarkDone: () -> Unit,
 ) {
     val group = controller.selectedGroup ?: return
+    var tipVisible by remember(group.id) { mutableStateOf(false) }
+    var tipRequestCount by remember(group.id) { mutableIntStateOf(0) }
+    val tipText = groupTip(group)
+    val tipPopupOffsetY = with(LocalDensity.current) { 48.dp.roundToPx() }
+
+    LaunchedEffect(tipRequestCount) {
+        if (tipRequestCount > 0) {
+            tipVisible = true
+            delay(3000)
+            tipVisible = false
+        }
+    }
+
     AlertDialog(
         onDismissRequest = controller::hideDetails,
         title = {
-            Text(
-                text = group.name,
-                color = colorResource(R.color.laundry_text),
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text(
+                    text = group.name,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp),
+                    color = colorResource(R.color.laundry_text),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Box(contentAlignment = Alignment.TopEnd) {
+                    Button(
+                        onClick = { tipRequestCount += 1 },
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colorResource(R.color.laundry_primary),
+                            contentColor = colorResource(R.color.white),
+                        ),
+                    ) {
+                        Icon(
+                            painter = painterResource(android.R.drawable.ic_menu_info_details),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = stringResource(R.string.group_tip_button),
+                            modifier = Modifier.padding(start = 6.dp),
+                            fontSize = 13.sp,
+                        )
+                    }
+                    Popup(
+                        alignment = Alignment.TopEnd,
+                        offset = IntOffset(0, tipPopupOffsetY),
+                        properties = PopupProperties(
+                            focusable = false,
+                            dismissOnBackPress = false,
+                            dismissOnClickOutside = false,
+                        ),
+                    ) {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = tipVisible,
+                            enter = fadeIn(animationSpec = tween(durationMillis = 180)),
+                            exit = fadeOut(animationSpec = tween(durationMillis = 450)),
+                        ) {
+                            TipBubble(text = tipText)
+                        }
+                    }
+                }
+            }
         },
         text = {
             Column {
@@ -768,6 +839,40 @@ private fun GroupDetailsDialog(
             }
         },
     )
+}
+
+@Composable
+private fun TipBubble(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val bubbleColor = colorResource(R.color.laundry_warning_background)
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(end = 28.dp)
+                .size(10.dp)
+                .rotate(45f)
+                .background(bubbleColor),
+        )
+        Box(
+            modifier = Modifier
+                .width(220.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(bubbleColor)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Text(
+                text = text,
+                color = colorResource(R.color.laundry_text),
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+            )
+        }
+    }
 }
 
 @Composable
@@ -1254,6 +1359,35 @@ private fun groupDetail(group: LaundryDisplayGroup): String {
         itemCount,
         stringResource(if (group.done) R.string.status_done else R.string.status_pending),
     )
+}
+
+@Composable
+private fun groupTip(group: LaundryDisplayGroup): String {
+    val groupName = group.name.lowercase()
+    val records = group.records.map { storedRecord -> storedRecord.record }
+    val detailTypes = records.mapNotNull { record -> record.detailType?.trim()?.lowercase() }
+    val colors = records.mapNotNull { record -> LaundryCategory.displayColor(record.color)?.lowercase() }
+    val categories = records.map { record -> record.category }
+    val tipResId = when {
+        categories.any { category -> category == LaundryRecord.CATEGORY_TOWEL }
+                || groupName.contains("towel") -> R.string.group_tip_towels
+        detailTypes.any { detailType -> detailType.contains("denim") || detailType.contains("jeans") }
+                || groupName.contains("denim") -> R.string.group_tip_denim
+        detailTypes.any { detailType -> detailType.contains("activewear") }
+                || groupName.contains("activewear") -> R.string.group_tip_activewear
+        detailTypes.any { detailType -> detailType.contains("sweater") || detailType.contains("skirt") }
+                || groupName.contains("delicate") -> R.string.group_tip_delicates
+        categories.any { category -> category == LaundryRecord.CATEGORY_SOCK }
+                || groupName.contains("sock") -> R.string.group_tip_socks
+        colors.any { color -> color == LaundryCategory.COLOR_BLACK.lowercase() || color == LaundryCategory.COLOR_DARK.lowercase() }
+                || groupName.contains("dark") -> R.string.group_tip_dark
+        colors.any { color -> color == LaundryCategory.COLOR_WHITE.lowercase() || color == LaundryCategory.COLOR_BRIGHT.lowercase() }
+                || groupName.contains("light") -> R.string.group_tip_light
+        colors.any { color -> color == LaundryCategory.COLOR_MIXED.lowercase() }
+                || groupName.contains("mixed") -> R.string.group_tip_mixed
+        else -> R.string.group_tip_default
+    }
+    return stringResource(tipResId)
 }
 
 @Composable
