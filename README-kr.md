@@ -8,6 +8,8 @@
 
 사진으로 세탁물을 인식하고, 색상과 종류에 따라 세탁 그룹을 만들어 분리 세탁을 돕는 Android 앱입니다. 카메라 화면에서 세탁물을 감지하면 사용자는 인식 결과를 확인하고 저장할 수 있으며, 저장된 세탁물은 그룹별 추천 순서와 세탁 팁으로 이어집니다.
 
+시연 영상: [YouTube](https://www.youtube.com/watch?v=voQA3GmAZa8)
+
 ## 앱 화면
 
 <!-- TODO: 아래 경로에 실제 앱 화면 4장을 추가한 뒤 이 주석을 삭제하세요. 권장 파일명: docs/assets/screen-home.png, docs/assets/screen-register.png, docs/assets/screen-groups.png, docs/assets/screen-tips.png -->

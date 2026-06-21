@@ -8,6 +8,8 @@
 
 Laundry Mate is an Android app that recognizes laundry from photos and helps users separate laundry loads by creating washing groups based on color and clothing type. When laundry is detected in the camera view, users can review and save the recognition result, and saved laundry items flow into group-based recommendation order and laundry tips.
 
+Demo video: [YouTube](https://www.youtube.com/watch?v=voQA3GmAZa8)
+
 ## App Screens
 
 <!-- TODO: Add four actual app screenshots to the paths below, then remove this comment. Recommended filenames: docs/assets/screen-home.png, docs/assets/screen-register.png, docs/assets/screen-groups.png, docs/assets/screen-tips.png -->
